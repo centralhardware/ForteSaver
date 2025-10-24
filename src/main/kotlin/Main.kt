@@ -1,0 +1,36 @@
+import commands.registerHelpCommand
+import commands.registerParseStatementCommand
+import commands.registerStartCommand
+import dev.inmo.micro_utils.common.Warning
+import dev.inmo.tgbotapi.AppConfig
+import dev.inmo.tgbotapi.extensions.api.bot.setMyCommands
+import dev.inmo.tgbotapi.longPolling
+import dev.inmo.tgbotapi.types.BotCommand
+import dev.inmo.tgbotapi.utils.RiskFeature
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("Main")
+
+@OptIn(Warning::class, RiskFeature::class)
+suspend fun main() {
+    logger.info("Starting Forte Bank Statement Parser Bot...")
+
+    AppConfig.init("forte-saver")
+
+    longPolling({ restrictAccess(EnvironmentVariableUserAccessChecker()) }) {
+        logger.info("Bot started successfully")
+
+        // Set bot commands
+        setMyCommands(
+            BotCommand("start", "Start the bot"),
+            BotCommand("help", "Show help message")
+        )
+
+        // Register command handlers
+        registerStartCommand()
+        registerHelpCommand()
+        registerParseStatementCommand()
+
+        logger.info("All handlers registered")
+    }.second.join()
+}

@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  forte-saver:
+    build: .
+    container_name: forte-saver
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ALLOWED_USERS=${ALLOWED_USERS}
+    env_file:
+      - .env
