@@ -24,34 +24,45 @@ object StatementRepository {
     ): ImportResult = newSuspendedTransaction(Dispatchers.IO) {
         val totalCount = transactions.size
 
-        // Group transactions by (currency, date) and assign daily sequence numbers
+        // Pre-cache transaction types to avoid repeated lookups
+        val transactionTypeCache = mutableMapOf<String, Int>()
+
+        // Group transactions by (account, date) and assign daily sequence numbers
         val transactionsWithMetadata = transactions
-            .groupBy { it.currency to it.date }
-            .flatMap { (currencyDatePair, txsOnDate) ->
-                val (currency, date) = currencyDatePair
+            .groupBy { Pair(it.accountNumber, it.currency) to it.date }
+            .flatMap { (accountDatePair, txsOnDate) ->
                 txsOnDate.mapIndexed { index, tx ->
                     TransactionWithMetadata(
                         data = tx,
-                        dailySequence = index,  // 0, 1, 2... within this day for this currency
+                        dailySequence = index,  // 0, 1, 2... within this day for this account
                         hash = calculateTransactionHash(tx)
                     )
                 }
             }
 
-        // Get all unique currencies and hashes from the batch
-        val currencies = transactionsWithMetadata.map { it.data.currency }.distinct()
+        // Get all unique account identifiers and hashes from the batch
+        val accountIdentifiers = transactionsWithMetadata
+            .map { Pair(it.data.accountNumber, it.data.currency) }
+            .distinct()
+
+        // Find or create all accounts first
+        val accountIds = accountIdentifiers.associateWith { (accountNumber, currency) ->
+            AccountRepository.findOrCreateAccount(accountNumber, currency)
+        }
+
         val hashes = transactionsWithMetadata.map { it.hash }.distinct()
 
-        // Check which (currency, daily_sequence, hash) triples already exist in database
+        // Check which (account_id, daily_sequence, hash) triples already exist in database
         val existingTriples = if (transactionsWithMetadata.isNotEmpty()) {
+            val allAccountIds = accountIds.values.toSet()
             Transactions
-                .select(Transactions.currency, Transactions.dailySequence, Transactions.transactionHash)
+                .select(Transactions.accountId, Transactions.dailySequence, Transactions.transactionHash)
                 .where {
-                    (Transactions.currency inList currencies) and (Transactions.transactionHash inList hashes)
+                    (Transactions.accountId inList allAccountIds) and (Transactions.transactionHash inList hashes)
                 }
                 .map { row ->
                     Triple(
-                        row[Transactions.currency],
+                        row[Transactions.accountId].value,
                         row[Transactions.dailySequence],
                         row[Transactions.transactionHash]
                     )
@@ -61,7 +72,7 @@ object StatementRepository {
             emptySet()
         }
 
-        // Insert only transactions that don't exist (by currency + daily_sequence + hash)
+        // Insert only transactions that don't exist (by account_id + daily_sequence + hash)
         var importedCount = 0
         var processedCount = 0
         val totalToProcess = transactionsWithMetadata.size
@@ -70,23 +81,41 @@ object StatementRepository {
 
         transactionsWithMetadata.forEach { txMeta ->
             val tx = txMeta.data
-            val triple = Triple(tx.currency, txMeta.dailySequence, txMeta.hash)
+
+            // Get or cache transaction type ID
+            val transactionTypeId = transactionTypeCache.getOrPut(tx.type) {
+                AccountRepository.findOrCreateTransactionType(tx.type)
+            }
+
+            // Get account ID from pre-cached map
+            val accountKey = Pair(tx.accountNumber, tx.currency)
+            val accountId = accountIds[accountKey]
+                ?: throw IllegalStateException("Account ID not found for $accountKey")
+
+            val triple = Triple(accountId, txMeta.dailySequence, txMeta.hash)
 
             if (triple !in existingTriples) {
+                // Find or create merchant for this transaction
+                val merchantId = MerchantRepository.findOrCreateMerchant(
+                    name = tx.merchantName,
+                    location = tx.merchantLocation,
+                    mccCode = tx.mccCode
+                )
+
+                // Find or create bank (this is the merchant's bank, not Forte)
+                val bankId = AccountRepository.findOrCreateBank(tx.bankName)
+
                 Transactions.insert {
                     it[Transactions.transactionDate] = tx.date
-                    it[Transactions.transactionType] = tx.type
+                    it[Transactions.transactionTypeId] = transactionTypeId
                     it[Transactions.amount] = tx.amount
-                    it[Transactions.currency] = tx.currency
+                    it[Transactions.accountId] = accountId
                     it[Transactions.transactionAmount] = tx.transactionAmount
                     it[Transactions.transactionCurrency] = tx.transactionCurrency
-                    it[Transactions.merchantName] = tx.merchantName
-                    it[Transactions.merchantLocation] = tx.merchantLocation
-                    it[Transactions.mccCode] = tx.mccCode
-                    it[Transactions.bankName] = tx.bankName
+                    it[Transactions.bankId] = bankId
                     it[Transactions.paymentMethod] = tx.paymentMethod
-                    it[Transactions.accountNumber] = tx.accountNumber
                     it[Transactions.description] = tx.description
+                    it[Transactions.merchantId] = merchantId
                     it[Transactions.dailySequence] = txMeta.dailySequence
                     it[Transactions.transactionHash] = txMeta.hash
                     it[Transactions.createdAt] = JavaLocalDateTime.now()
@@ -124,12 +153,11 @@ object StatementRepository {
             append(tx.amount)
             append(tx.transactionAmount ?: "")
             append(tx.transactionCurrency ?: "")
-            append(tx.merchantName ?: "")
-            append(tx.merchantLocation ?: "")
-            append(tx.mccCode ?: "")
             append(tx.bankName ?: "")
             append(tx.paymentMethod ?: "")
             append(tx.description)
+            // Merchant data is not included in hash as it may change
+            // but the transaction itself remains the same
         }
 
         val digest = MessageDigest.getInstance("SHA-256")
@@ -150,12 +178,12 @@ data class TransactionData(
     val transactionAmount: BigDecimal?,
     val transactionCurrency: String?,
 
-    // Merchant details
+    // Merchant details (for creating/finding merchant)
     val merchantName: String?,
     val merchantLocation: String?,
+    val mccCode: String?,
 
     // Payment details
-    val mccCode: String?,
     val bankName: String?,
     val paymentMethod: String?,
 

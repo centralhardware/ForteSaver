@@ -4,32 +4,70 @@ import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.javatime.date
 import org.jetbrains.exposed.sql.javatime.datetime
 
+// Reference tables for normalized data
+object Banks : IntIdTable("banks") {
+    val name = varchar("name", 255).uniqueIndex()
+    val createdAt = datetime("created_at")
+}
+
+object TransactionTypes : IntIdTable("transaction_types") {
+    val name = varchar("name", 50).uniqueIndex()
+    val createdAt = datetime("created_at")
+}
+
+object Accounts : IntIdTable("accounts") {
+    val accountNumber = varchar("account_number", 50).uniqueIndex()
+    val currency = varchar("currency", 10)
+    val createdAt = datetime("created_at")
+}
+
+object Categories : IntIdTable("categories") {
+    val name = varchar("name", 100).uniqueIndex()
+    val description = text("description").nullable()
+    val createdAt = datetime("created_at")
+}
+
+object Merchants : IntIdTable("merchants") {
+    val name = varchar("name", 500)
+    val location = text("location").nullable()
+    val mccCode = varchar("mcc_code", 10).nullable()
+    val categoryId = reference("category_id", Categories).nullable()
+    val needsCategorization = bool("needs_categorization").default(true)
+    val createdAt = datetime("created_at")
+    val updatedAt = datetime("updated_at")
+
+    init {
+        // Unique constraint on merchant name + location combo
+        uniqueIndex("unique_merchant", name, location)
+        index("idx_merchants_name", false, name)
+        index("idx_merchants_category", false, categoryId)
+        index("idx_merchants_needs_categorization", false, needsCategorization)
+    }
+}
+
 object Transactions : IntIdTable("transactions") {
     val transactionDate = date("transaction_date")
-    val transactionType = varchar("transaction_type", 50)
+    val transactionTypeId = reference("transaction_type_id", TransactionTypes)
 
     // Amount in account currency
     val amount = decimal("amount", 15, 2)
-    val currency = varchar("currency", 10)
+    val accountId = reference("account_id", Accounts)
 
     // Amount in transaction currency (optional)
     val transactionAmount = decimal("transaction_amount", 15, 2).nullable()
     val transactionCurrency = varchar("transaction_currency", 10).nullable()
 
-    // Merchant/counterparty details
-    val merchantName = text("merchant_name").nullable()
-    val merchantLocation = text("merchant_location").nullable()
+    // Bank through which payment was made (merchant bank)
+    val bankId = reference("bank_id", Banks).nullable()
 
     // Payment details
-    val mccCode = varchar("mcc_code", 10).nullable()
-    val bankName = varchar("bank_name", 255).nullable()
     val paymentMethod = varchar("payment_method", 50).nullable()
 
     // Full description
     val description = text("description").nullable()
 
-    // Account information
-    val accountNumber = varchar("account_number", 50).nullable()
+    // Merchant reference
+    val merchantId = reference("merchant_id", Merchants).nullable()
 
     // Deduplication - daily sequence (order within same day)
     // Assumption: Bank sorts transactions by time within each day
@@ -41,9 +79,7 @@ object Transactions : IntIdTable("transactions") {
     val createdAt = datetime("created_at")
 
     init {
-        // Unique constraint: same currency + same daily_sequence + same hash = duplicate
-        // This handles multiple currency accounts where transaction order may differ
-        // Hash ensures the same transaction is not imported twice
-        uniqueIndex("unique_currency_sequence_hash", currency, dailySequence, transactionHash)
+        // Unique constraint: same account + same daily_sequence + same hash = duplicate
+        uniqueIndex("unique_account_sequence_hash", accountId, dailySequence, transactionHash)
     }
 }
