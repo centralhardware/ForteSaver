@@ -1,4 +1,3 @@
-import commands.registerHelpCommand
 import commands.registerParseStatementCommand
 import commands.registerStartCommand
 import database.DatabaseManager
@@ -33,7 +32,6 @@ suspend fun main() {
 
         // Register command handlers
         registerStartCommand()
-        registerHelpCommand()
         registerParseStatementCommand()
 
         logger.info("All handlers registered")
