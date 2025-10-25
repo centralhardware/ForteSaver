@@ -23,7 +23,7 @@ dependencies {
     implementation("com.github.centralhardware.ktgbotapi-middlewars:ktgbotapi-restrict-access-middleware:$ktgbotapiVersion")
 
     // PDF parsing
-    implementation("org.apache.pdfbox:pdfbox:3.0.3")
+    implementation("org.apache.pdfbox:pdfbox:3.0.6")
 
     // Excel parsing (if needed)
     implementation("org.apache.poi:poi:5.4.1")
