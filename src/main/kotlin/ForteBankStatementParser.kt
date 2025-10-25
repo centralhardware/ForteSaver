@@ -90,12 +90,21 @@ object ForteBankStatementParser {
     }
 
     private fun extractAccountNumber(lines: List<String>): String {
-        // Look for "Account number:" pattern
-        val accountPattern = Regex("Account number:\\s*([A-Z0-9]+)")
+        // Pattern 1: "Account number: KZ1896502F0018918306"
+        val pattern1 = Regex("Account number:\\s*([A-Z0-9]+)")
+        // Pattern 2: "№ KZ5496503F0011445795 (EUR)" or "№ KZ5496503F0011445795"
+        val pattern2 = Regex("№\\s*([A-Z0-9]+)")
+
         for (line in lines) {
-            val match = accountPattern.find(line)
-            if (match != null && match.groupValues.size > 1) {
-                return match.groupValues[1].trim()
+            pattern1.find(line)?.let { match ->
+                if (match.groupValues.size > 1) {
+                    return match.groupValues[1].trim()
+                }
+            }
+            pattern2.find(line)?.let { match ->
+                if (match.groupValues.size > 1) {
+                    return match.groupValues[1].trim()
+                }
             }
         }
         return "Unknown"
