@@ -1,16 +1,11 @@
 package commands
 
-import Config
 import dev.inmo.tgbotapi.extensions.api.send.reply
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommand
 
-suspend fun BehaviourContext.registerHelpCommand() {
+fun BehaviourContext.registerHelpCommand() {
     onCommand("help") { message ->
-        if (Config.ALLOWED_USERS.isNotEmpty() && message.chat.id !in Config.ALLOWED_USERS) {
-            reply(message, "Access denied")
-            return@onCommand
-        }
 
         val helpMessage = """
             📖 *Forte Bank Statement Parser Bot - Help*

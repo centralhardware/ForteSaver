@@ -1,17 +1,11 @@
 package commands
 
-import Config
 import dev.inmo.tgbotapi.extensions.api.send.reply
 import dev.inmo.tgbotapi.extensions.behaviour_builder.BehaviourContext
 import dev.inmo.tgbotapi.extensions.behaviour_builder.triggers_handling.onCommand
 
-suspend fun BehaviourContext.registerStartCommand() {
+fun BehaviourContext.registerStartCommand() {
     onCommand("start") { message ->
-        if (Config.ALLOWED_USERS.isNotEmpty() && message.chat.id !in Config.ALLOWED_USERS) {
-            reply(message, "Access denied")
-            return@onCommand
-        }
-
         val welcomeMessage = """
             👋 Welcome to Forte Bank Statement Parser Bot!
 

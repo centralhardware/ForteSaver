@@ -137,96 +137,195 @@ object ForteBankStatementParser {
         return Pair(openingBalance, closingBalance)
     }
 
-    private fun extractTransactions(lines: List<String>, currency: String): List<Transaction> {
+    private fun extractTransactions(lines: List<String>, accountCurrency: String): List<Transaction> {
         val transactions = mutableListOf<Transaction>()
 
-        // Find where transactions start (after "Date Sum Description Details")
+        // Find where transactions start
         var inTransactionSection = false
-        var currentDate: LocalDate? = null
-        var currentAmount: Double? = null
-        var currentCurrency: String? = null
-        var description = StringBuilder()
+        var i = 0
 
-        for (line in lines) {
+        while (i < lines.size) {
+            val line = lines[i]
+
             if (line.contains("Date Sum Description Details") ||
                 line.contains("Debit card statement details")) {
                 inTransactionSection = true
+                i++
                 continue
             }
 
-            if (!inTransactionSection) continue
+            if (!inTransactionSection) {
+                i++
+                continue
+            }
+
+            // Skip "Date Sum Description Details" header line that repeats
+            if (line.trim() == "Date Sum Description Details") {
+                i++
+                continue
+            }
 
             // Try to match a date at the start of the line
             val dateMatch = Regex("^(\\d{2}\\.\\d{2}\\.\\d{4})").find(line)
 
             if (dateMatch != null) {
-                // Save previous transaction if exists
-                if (currentDate != null && currentAmount != null) {
-                    val txDateTime = currentDate.atStartOfDay()
-                    val debit = if (currentAmount < 0) -currentAmount else null
-                    val credit = if (currentAmount > 0) currentAmount else null
-
-                    transactions.add(
-                        Transaction(
-                            dateTime = txDateTime,
-                            description = description.toString().trim(),
-                            debit = debit,
-                            credit = credit,
-                            balance = 0.0,
-                            reference = null
-                        )
-                    )
-                }
-
-                // Start new transaction
-                currentDate = try {
+                // This is a transaction line - collect all lines for this transaction
+                val date = try {
                     LocalDate.parse(dateMatch.groupValues[1], dateFormatter)
                 } catch (e: DateTimeParseException) {
                     logger.warn("Failed to parse date: ${dateMatch.groupValues[1]}", e)
-                    null
+                    i++
+                    continue
                 }
 
-                // Extract amount - look for pattern like "-3.26 USD" or "0.69 USD"
-                val amountMatch = Regex("[-]?\\d+\\.\\d{2}\\s+[A-Z]{3}").find(line)
-                if (amountMatch != null) {
-                    val amountStr = amountMatch.value.split("\\s+".toRegex())[0]
-                    currentAmount = amountStr.toDoubleOrNull()
-                    currentCurrency = amountMatch.value.split("\\s+".toRegex()).getOrNull(1)
+                // Collect all lines for this transaction
+                val txLines = mutableListOf(line)
+                var j = i + 1
+                while (j < lines.size) {
+                    val nextLine = lines[j]
+                    if (nextLine.matches(Regex("^\\d{2}\\.\\d{2}\\.\\d{4}.*")) ||
+                        nextLine.startsWith("Page ") ||
+                        nextLine.trim() == "Date Sum Description Details") {
+                        break
+                    }
+                    if (nextLine.trim().isNotEmpty()) {
+                        txLines.add(nextLine.trim())
+                    }
+                    j++
                 }
 
-                // Extract description - everything after the amount
-                val descMatch = Regex("[-]?\\d+\\.\\d{2}\\s+[A-Z]{3}\\s+(.+)").find(line)
-                if (descMatch != null && descMatch.groupValues.size > 1) {
-                    description = StringBuilder(descMatch.groupValues[1])
-                } else {
-                    description = StringBuilder()
+                // Join all lines for parsing
+                val fullText = txLines.joinToString(" ")
+
+                // Extract amount in account currency: "-3.26 USD"
+                val accountAmountMatch = Regex("([-]?\\d+\\.\\d{2})\\s+([A-Z]{3})").find(fullText)
+                if (accountAmountMatch == null) {
+                    logger.warn("Failed to parse amount from transaction: $fullText")
+                    i = j
+                    continue
                 }
-            } else if (currentDate != null) {
-                // Continue description on next line
-                if (line.isNotBlank() && !line.startsWith("Page ")) {
-                    description.append(" ").append(line)
+
+                val amount = accountAmountMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+                val currency = accountAmountMatch.groupValues[2]
+
+                // Extract transaction amount if present: "(59.40 MYR)"
+                var transactionAmount: Double? = null
+                var transactionCurrency: String? = null
+                val txAmountMatch = Regex("\\((\\d+\\.\\d{2})\\s+([A-Z]{3})\\)").find(fullText)
+                if (txAmountMatch != null) {
+                    transactionAmount = txAmountMatch.groupValues[1].toDoubleOrNull()
+                    transactionCurrency = txAmountMatch.groupValues[2]
                 }
+
+                // Extract transaction type
+                val type = extractTransactionType(fullText)
+
+                // Parse details (everything after type or amount)
+                val details = fullText
+                val (merchantName, merchantLocation, mccCode, bankName, paymentMethod) = parseDetails(details)
+
+                transactions.add(
+                    Transaction(
+                        date = date,
+                        type = type,
+                        amount = amount,
+                        currency = currency,
+                        transactionAmount = transactionAmount,
+                        transactionCurrency = transactionCurrency,
+                        merchantName = merchantName,
+                        merchantLocation = merchantLocation,
+                        mccCode = mccCode,
+                        bankName = bankName,
+                        paymentMethod = paymentMethod,
+                        description = details
+                    )
+                )
+
+                i = j
+            } else {
+                i++
             }
         }
 
-        // Add last transaction
-        if (currentDate != null && currentAmount != null) {
-            val txDateTime = currentDate.atStartOfDay()
-            val debit = if (currentAmount < 0) -currentAmount else null
-            val credit = if (currentAmount > 0) currentAmount else null
+        return transactions
+    }
 
-            transactions.add(
-                Transaction(
-                    dateTime = txDateTime,
-                    description = description.toString().trim(),
-                    debit = debit,
-                    credit = credit,
-                    balance = 0.0,
-                    reference = null
-                )
-            )
+    private fun extractTransactionType(line: String): String {
+        return when {
+            line.contains("Purchase with bonuses") -> "Purchase with bonuses"
+            line.contains("Purchase") -> "Purchase"
+            line.contains("Transfer") -> "Transfer"
+            line.contains("Refund") -> "Refund"
+            line.contains("Account replenishment") -> "Account replenishment"
+            line.contains("Cash withdrawal") -> "Cash withdrawal"
+            else -> "Other"
+        }
+    }
+
+    private data class TransactionDetails(
+        val merchantName: String?,
+        val merchantLocation: String?,
+        val mccCode: String?,
+        val bankName: String?,
+        val paymentMethod: String?
+    )
+
+    private fun parseDetails(details: String): TransactionDetails {
+        if (details.isBlank()) {
+            return TransactionDetails(null, null, null, null, null)
         }
 
-        return transactions
+        // Extract MCC code: "MCC: 5411"
+        var mccCode: String? = null
+        val mccMatch = Regex("MCC:\\s*(\\d+)").find(details)
+        if (mccMatch != null) {
+            mccCode = mccMatch.groupValues[1]
+        }
+
+        // Extract payment method (usually at the end): "APPLE PAY" or card number
+        var paymentMethod: String? = null
+        if (details.contains("APPLE PAY")) {
+            paymentMethod = "APPLE PAY"
+        } else if (details.contains("GOOGLE PAY")) {
+            paymentMethod = "GOOGLE PAY"
+        }
+
+        // Extract bank name: text before "MCC:" or after last comma
+        var bankName: String? = null
+        val bankPattern = Regex(",\\s*([^,]+),\\s*MCC:")
+        val bankMatch = bankPattern.find(details)
+        if (bankMatch != null) {
+            bankName = bankMatch.groupValues[1].trim()
+            if (bankName == "Bank not specified") {
+                bankName = null
+            }
+        }
+
+        // Extract merchant name and location
+        // Format: "NSK GROCER- QCM,QUILL CITY MALL,KUALA LUMPUR,MY"
+        var merchantName: String? = null
+        var merchantLocation: String? = null
+
+        // Split by commas
+        val parts = details.split(",").map { it.trim() }
+        if (parts.isNotEmpty()) {
+            // First part is usually merchant name
+            merchantName = parts[0]
+
+            // Try to find location parts (before bank name)
+            val locationParts = mutableListOf<String>()
+            for (part in parts.drop(1)) {
+                if (part.contains("MCC:") || part.contains("Bank") ||
+                    part == "APPLE PAY" || part == "GOOGLE PAY") {
+                    break
+                }
+                locationParts.add(part)
+            }
+            if (locationParts.isNotEmpty()) {
+                merchantLocation = locationParts.joinToString(", ")
+            }
+        }
+
+        return TransactionDetails(merchantName, merchantLocation, mccCode, bankName, paymentMethod)
     }
 }

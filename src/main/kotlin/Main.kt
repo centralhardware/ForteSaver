@@ -1,6 +1,7 @@
 import commands.registerHelpCommand
 import commands.registerParseStatementCommand
 import commands.registerStartCommand
+import database.DatabaseManager
 import dev.inmo.micro_utils.common.Warning
 import dev.inmo.tgbotapi.AppConfig
 import dev.inmo.tgbotapi.extensions.api.bot.setMyCommands
@@ -14,6 +15,10 @@ private val logger = LoggerFactory.getLogger("Main")
 @OptIn(Warning::class, RiskFeature::class)
 suspend fun main() {
     logger.info("Starting Forte Bank Statement Parser Bot...")
+
+    // Initialize database
+    DatabaseManager.init(Config.DATABASE_URL)
+    logger.info("Database initialized")
 
     AppConfig.init("forte-saver")
 

@@ -15,6 +15,7 @@ repositories {
 
 val ktgbotapiVersion = "29.0.0"
 val ktorVersion = "3.3.1"
+val exposedVersion = "0.56.0"
 
 dependencies {
     implementation("dev.inmo:tgbotapi:$ktgbotapiVersion")
@@ -29,6 +30,16 @@ dependencies {
     implementation("org.apache.poi:poi-ooxml:5.3.0")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+
+    // Database
+    implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-java-time:$exposedVersion")
+    implementation("org.postgresql:postgresql:42.7.4")
+    implementation("com.zaxxer:HikariCP:6.2.1")
+    implementation("org.flywaydb:flyway-core:10.10.0")
+    implementation("org.flywaydb:flyway-database-postgresql:10.10.0")
 
     // Logging
     implementation("ch.qos.logback:logback-classic:1.5.15")
@@ -69,20 +80,4 @@ kotlin {
 
 application {
     mainClass.set("MainKt")
-}
-
-tasks.register<JavaExec>("extractPdfText") {
-    group = "application"
-    description = "Extract text from PDF file"
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("ExtractPdfTextKt")
-    workingDir = projectDir
-}
-
-tasks.register<JavaExec>("testParser") {
-    group = "application"
-    description = "Test the bank statement parser"
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("TestParserKt")
-    workingDir = projectDir
 }

@@ -1,6 +1,5 @@
 import kotlinx.serialization.Serializable
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 @Serializable
 data class BankStatement(
@@ -23,11 +22,27 @@ data class DatePeriod(
 
 @Serializable
 data class Transaction(
-    @Serializable(with = LocalDateTimeSerializer::class)
-    val dateTime: LocalDateTime,
-    val description: String,
-    val debit: Double?,
-    val credit: Double?,
-    val balance: Double,
-    val reference: String?
+    @Serializable(with = LocalDateSerializer::class)
+    val date: LocalDate,
+    val type: String, // Purchase, Transfer, Refund, Purchase with bonuses, Account replenishment, Cash withdrawal
+
+    // Amount in account currency
+    val amount: Double,
+    val currency: String,
+
+    // Amount in transaction currency (for foreign purchases)
+    val transactionAmount: Double?,
+    val transactionCurrency: String?,
+
+    // Merchant details
+    val merchantName: String?,
+    val merchantLocation: String?,
+
+    // Payment details
+    val mccCode: String?,
+    val bankName: String?,
+    val paymentMethod: String?,
+
+    // Full description
+    val description: String
 )
