@@ -230,9 +230,24 @@ object ForteBankStatementParser {
                 // Extract transaction type
                 val type = extractTransactionType(fullText)
 
-                // Parse details (everything after type or amount)
-                val details = fullText
-                val (merchantName, merchantLocation, mccCode, bankName, paymentMethod) = parseDetails(details)
+                // Parse merchant details (everything after type)
+                // Remove date, amounts, and type prefix to get clean merchant details
+                var merchantDetails = fullText
+
+                // Remove date prefix: "16.10.2025 "
+                merchantDetails = merchantDetails.replaceFirst(Regex("^\\d{2}\\.\\d{2}\\.\\d{4}\\s+"), "")
+
+                // Remove account amount: "-1.89 USD " or "1.89 USD "
+                merchantDetails = merchantDetails.replaceFirst(Regex("^[-]?\\d+\\.\\d{2}\\s+[A-Z]{3}\\s+"), "")
+
+                // Remove transaction amount if present: "(7.80 MYR) "
+                merchantDetails = merchantDetails.replaceFirst(Regex("^\\([\\d.]+\\s+[A-Z]{3}\\)\\s+"), "")
+
+                // Remove transaction type prefix
+                val typePattern = "(Purchase with bonuses|Purchase|Transfer|Refund|Account replenishment|Cash withdrawal|Fee)\\s+"
+                merchantDetails = merchantDetails.replaceFirst(Regex("^$typePattern"), "")
+
+                val (merchantName, merchantLocation, mccCode, bankName, paymentMethod) = parseDetails(merchantDetails)
 
                 transactions.add(
                     Transaction(
@@ -247,7 +262,7 @@ object ForteBankStatementParser {
                         mccCode = mccCode,
                         bankName = bankName,
                         paymentMethod = paymentMethod,
-                        description = details
+                        description = fullText
                     )
                 )
 
