@@ -17,17 +17,25 @@ fun BehaviourContext.registerHelpCommand() {
             *How to use:*
             1. Send your Forte Bank statement PDF file to the bot
             2. Wait for the bot to process the file
-            3. Receive a formatted summary of your statement
+            3. Receive a formatted summary of your statement with import statistics
 
             *Extracted Information:*
             • Account holder name
             • Account number
             • Currency
             • Statement period
-            • Opening balance
-            • Closing balance
-            • List of transactions with dates, descriptions, and amounts
-            • Total debits and credits
+            • Opening and closing balance
+            • All transactions with detailed information:
+              - Date, type, amount
+              - Merchant name and location
+              - MCC code, bank name
+              - Payment method (Apple Pay, Google Pay, etc.)
+
+            *Import Statistics:*
+            After processing, you'll receive:
+            • Total number of transactions found
+            • Number of new transactions imported
+            • Number of duplicates skipped (if statement was uploaded before)
 
             *Supported Formats:*
             • PDF files from Forte Bank

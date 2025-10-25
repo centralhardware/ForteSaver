@@ -37,24 +37,34 @@ object ForteBankStatementParser {
 
     private fun parseBankStatement(text: String): BankStatement {
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        logger.info("Starting PDF parsing: ${lines.size} lines extracted")
 
         // Extract account holder - looking for IIN line
         val accountHolder = extractAccountHolder(lines)
+        logger.debug("Extracted account holder: $accountHolder")
 
         // Extract account number
         val accountNumber = extractAccountNumber(lines)
+        logger.debug("Extracted account number: $accountNumber")
 
         // Extract currency
         val currency = extractCurrency(lines)
+        logger.debug("Extracted currency: $currency")
 
         // Extract period
         val period = extractPeriod(lines)
+        logger.debug("Extracted period: ${period.from} - ${period.to}")
 
         // Extract opening and closing balance
         val (openingBalance, closingBalance) = extractBalances(lines)
+        logger.debug("Extracted balances: opening=$openingBalance, closing=$closingBalance")
+
+        logger.info("Metadata extraction complete. Starting transaction parsing...")
 
         // Extract transactions
         val transactions = extractTransactions(lines, currency)
+
+        logger.info("PDF parsing complete: ${transactions.size} transactions extracted")
 
         return BankStatement(
             accountHolder = accountHolder,
@@ -240,6 +250,11 @@ object ForteBankStatementParser {
                         description = details
                     )
                 )
+
+                // Log progress every 50 transactions
+                if (transactions.size % 50 == 0) {
+                    logger.info("Transaction parsing progress: ${transactions.size} transactions parsed...")
+                }
 
                 i = j
             } else {

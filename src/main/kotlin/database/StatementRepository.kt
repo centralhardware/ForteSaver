@@ -50,6 +50,11 @@ object StatementRepository {
 
         // Insert only transactions that don't exist (by date + daily_sequence)
         var importedCount = 0
+        var processedCount = 0
+        val totalToProcess = transactionsWithMetadata.size
+
+        logger.info("Starting import of $totalToProcess transactions...")
+
         transactionsWithMetadata.forEach { txMeta ->
             val tx = txMeta.data
             val pair = tx.date to txMeta.dailySequence
@@ -74,6 +79,14 @@ object StatementRepository {
                     it[Transactions.createdAt] = JavaLocalDateTime.now()
                 }
                 importedCount++
+            }
+
+            processedCount++
+
+            // Log progress every 10% or at specific milestones
+            val percentage = (processedCount * 100) / totalToProcess
+            if (processedCount % (totalToProcess / 10).coerceAtLeast(1) == 0 || processedCount == totalToProcess) {
+                logger.info("Import progress: $processedCount/$totalToProcess ($percentage%) - $importedCount new, ${processedCount - importedCount} duplicates")
             }
         }
 

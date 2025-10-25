@@ -15,7 +15,7 @@ import java.math.BigDecimal
 
 private val logger = LoggerFactory.getLogger("ParseStatementCommand")
 
-suspend fun BehaviourContext.registerParseStatementCommand() {
+fun BehaviourContext.registerParseStatementCommand() {
     onDocument { message ->
         val document = message.content.asDocumentContent() ?: return@onDocument
 
@@ -28,14 +28,18 @@ suspend fun BehaviourContext.registerParseStatementCommand() {
 
         try {
             // Download the file
+            logger.info("Downloading PDF file...")
             val fileInfo = execute(GetFile(document.media.fileId))
             val fileContent = downloadFile(fileInfo)
+            logger.info("PDF file downloaded: ${fileContent.size} bytes")
 
             // Parse the statement
+            logger.info("Starting PDF parsing...")
             val statement = ForteBankStatementParser.parse(fileContent)
             logger.info("Parsed statement: ${statement.transactions.size} transactions")
 
             // Convert to database format
+            logger.info("Converting transactions to database format...")
             val transactions = statement.transactions.map { tx ->
                 TransactionData(
                     date = tx.date,
@@ -53,9 +57,12 @@ suspend fun BehaviourContext.registerParseStatementCommand() {
                     description = tx.description
                 )
             }
+            logger.info("Conversion complete: ${transactions.size} transactions ready for import")
 
             // Save to database (uses daily sequence for deduplication)
+            logger.info("Saving transactions to database...")
             val importResult = StatementRepository.saveTransactions(transactions)
+            logger.info("Database save complete")
 
             // Format and send import statistics
             val response = formatImportResult(importResult)
