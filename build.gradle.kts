@@ -26,8 +26,8 @@ dependencies {
     implementation("org.apache.pdfbox:pdfbox:3.0.3")
 
     // Excel parsing (if needed)
-    implementation("org.apache.poi:poi:5.3.0")
-    implementation("org.apache.poi:poi-ooxml:5.3.0")
+    implementation("org.apache.poi:poi:5.4.1")
+    implementation("org.apache.poi:poi-ooxml:5.4.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
