@@ -41,8 +41,9 @@ object Transactions : IntIdTable("transactions") {
     val createdAt = datetime("created_at")
 
     init {
-        // Unique constraint: same date + same position within day = duplicate
-        // This allows identical transactions while preventing true duplicates
-        uniqueIndex("unique_daily_transaction", transactionDate, dailySequence)
+        // Unique constraint: same currency + same daily_sequence + same hash = duplicate
+        // This handles multiple currency accounts where transaction order may differ
+        // Hash ensures the same transaction is not imported twice
+        uniqueIndex("unique_currency_sequence_hash", currency, dailySequence, transactionHash)
     }
 }

@@ -24,36 +24,44 @@ object StatementRepository {
     ): ImportResult = newSuspendedTransaction(Dispatchers.IO) {
         val totalCount = transactions.size
 
-        // Group transactions by date and assign daily sequence numbers
+        // Group transactions by (currency, date) and assign daily sequence numbers
         val transactionsWithMetadata = transactions
-            .groupBy { it.date }
-            .flatMap { (date, txsOnDate) ->
+            .groupBy { it.currency to it.date }
+            .flatMap { (currencyDatePair, txsOnDate) ->
+                val (currency, date) = currencyDatePair
                 txsOnDate.mapIndexed { index, tx ->
                     TransactionWithMetadata(
                         data = tx,
-                        dailySequence = index,  // 0, 1, 2... within this day
+                        dailySequence = index,  // 0, 1, 2... within this day for this currency
                         hash = calculateTransactionHash(tx)
                     )
                 }
             }
 
-        // Get all unique dates from the batch
-        val dates = transactionsWithMetadata.map { it.data.date }.distinct()
+        // Get all unique currencies and hashes from the batch
+        val currencies = transactionsWithMetadata.map { it.data.currency }.distinct()
+        val hashes = transactionsWithMetadata.map { it.hash }.distinct()
 
-        // Check which (date, daily_sequence) pairs already exist in database
-        val existingPairs = if (transactionsWithMetadata.isNotEmpty()) {
+        // Check which (currency, daily_sequence, hash) triples already exist in database
+        val existingTriples = if (transactionsWithMetadata.isNotEmpty()) {
             Transactions
-                .select(Transactions.transactionDate, Transactions.dailySequence)
-                .where { Transactions.transactionDate inList dates }
+                .select(Transactions.currency, Transactions.dailySequence, Transactions.transactionHash)
+                .where {
+                    (Transactions.currency inList currencies) and (Transactions.transactionHash inList hashes)
+                }
                 .map { row ->
-                    row[Transactions.transactionDate] to row[Transactions.dailySequence]
+                    Triple(
+                        row[Transactions.currency],
+                        row[Transactions.dailySequence],
+                        row[Transactions.transactionHash]
+                    )
                 }
                 .toSet()
         } else {
             emptySet()
         }
 
-        // Insert only transactions that don't exist (by date + daily_sequence)
+        // Insert only transactions that don't exist (by currency + daily_sequence + hash)
         var importedCount = 0
         var processedCount = 0
         val totalToProcess = transactionsWithMetadata.size
@@ -62,9 +70,9 @@ object StatementRepository {
 
         transactionsWithMetadata.forEach { txMeta ->
             val tx = txMeta.data
-            val pair = tx.date to txMeta.dailySequence
+            val triple = Triple(tx.currency, txMeta.dailySequence, txMeta.hash)
 
-            if (pair !in existingPairs) {
+            if (triple !in existingTriples) {
                 Transactions.insert {
                     it[Transactions.transactionDate] = tx.date
                     it[Transactions.transactionType] = tx.type
@@ -114,7 +122,6 @@ object StatementRepository {
             append(tx.date)
             append(tx.type)
             append(tx.amount)
-            append(tx.currency)
             append(tx.transactionAmount ?: "")
             append(tx.transactionCurrency ?: "")
             append(tx.merchantName ?: "")
@@ -161,6 +168,6 @@ data class TransactionData(
 
 private data class TransactionWithMetadata(
     val data: TransactionData,
-    val dailySequence: Int,  // Sequence within the same day (0, 1, 2...)
+    val dailySequence: Int,  // Sequence within the same day for this currency (0, 1, 2...)
     val hash: String
 )
