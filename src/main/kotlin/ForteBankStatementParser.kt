@@ -236,8 +236,13 @@ object ForteBankStatementParser {
                     transactionCurrency = txAmountMatch.groupValues[2]
                 }
 
-                // Extract transaction type
+                // Extract transaction type and filter - only save card purchases
                 val type = extractTransactionType(fullText)
+                if (type != "Purchase" && type != "Purchase with bonuses") {
+                    // Skip non-purchase transactions (transfers, refunds, withdrawals, etc.)
+                    i = j
+                    continue
+                }
 
                 // Parse merchant details (everything after type)
                 // Remove date, amounts, and type prefix to get clean merchant details
@@ -261,7 +266,6 @@ object ForteBankStatementParser {
                 transactions.add(
                     Transaction(
                         date = date,
-                        type = type,
                         amount = amount,
                         currency = currency,
                         transactionAmount = transactionAmount,
@@ -335,7 +339,10 @@ object ForteBankStatementParser {
         val bankMatch = bankPattern.find(details)
         if (bankMatch != null) {
             bankName = bankMatch.groupValues[1].trim()
-            if (bankName == "Bank not specified") {
+            // Normalize whitespace and check if it's "Bank not specified"
+            // PDF extraction sometimes adds extra spaces: "Bank not specifi ed", "Bank not spec ified", etc.
+            val normalizedBankName = bankName.replace(Regex("\\s+"), " ")
+            if (normalizedBankName == "Bank not specified") {
                 bankName = null
             }
         }

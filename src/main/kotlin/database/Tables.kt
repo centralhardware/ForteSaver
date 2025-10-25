@@ -10,11 +10,6 @@ object Banks : IntIdTable("banks") {
     val createdAt = datetime("created_at")
 }
 
-object TransactionTypes : IntIdTable("transaction_types") {
-    val name = varchar("name", 50).uniqueIndex()
-    val createdAt = datetime("created_at")
-}
-
 object Accounts : IntIdTable("accounts") {
     val accountNumber = varchar("account_number", 50).uniqueIndex()
     val currency = varchar("currency", 10)
@@ -47,7 +42,6 @@ object Merchants : IntIdTable("merchants") {
 
 object Transactions : IntIdTable("transactions") {
     val transactionDate = date("transaction_date")
-    val transactionTypeId = reference("transaction_type_id", TransactionTypes)
 
     // Amount in account currency
     val amount = decimal("amount", 15, 2)

@@ -24,7 +24,6 @@ data class DatePeriod(
 data class Transaction(
     @Serializable(with = LocalDateSerializer::class)
     val date: LocalDate,
-    val type: String, // Purchase, Transfer, Refund, Purchase with bonuses, Account replenishment, Cash withdrawal
 
     // Amount in account currency
     val amount: Double,

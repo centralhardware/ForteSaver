@@ -26,7 +26,7 @@ class ForteBankStatementParserTest {
         println("Transactions count: ${statement.transactions.size}")
 
         statement.transactions.take(5).forEach { tx ->
-            println("Transaction: ${tx.date} - ${tx.type} - ${tx.amount} ${tx.currency}")
+            println("Transaction: ${tx.date} - ${tx.amount} ${tx.currency} - ${tx.merchantName ?: "N/A"}")
         }
     }
 

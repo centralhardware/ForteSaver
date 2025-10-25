@@ -24,9 +24,6 @@ object StatementRepository {
     ): ImportResult = newSuspendedTransaction(Dispatchers.IO) {
         val totalCount = transactions.size
 
-        // Pre-cache transaction types to avoid repeated lookups
-        val transactionTypeCache = mutableMapOf<String, Int>()
-
         // Group transactions by (account, date) and assign daily sequence numbers
         val transactionsWithMetadata = transactions
             .groupBy { Pair(it.accountNumber, it.currency) to it.date }
@@ -82,11 +79,6 @@ object StatementRepository {
         transactionsWithMetadata.forEach { txMeta ->
             val tx = txMeta.data
 
-            // Get or cache transaction type ID
-            val transactionTypeId = transactionTypeCache.getOrPut(tx.type) {
-                AccountRepository.findOrCreateTransactionType(tx.type)
-            }
-
             // Get account ID from pre-cached map
             val accountKey = Pair(tx.accountNumber, tx.currency)
             val accountId = accountIds[accountKey]
@@ -107,7 +99,6 @@ object StatementRepository {
 
                 Transactions.insert {
                     it[Transactions.transactionDate] = tx.date
-                    it[Transactions.transactionTypeId] = transactionTypeId
                     it[Transactions.amount] = tx.amount
                     it[Transactions.accountId] = accountId
                     it[Transactions.transactionAmount] = tx.transactionAmount
@@ -149,7 +140,6 @@ object StatementRepository {
     private fun calculateTransactionHash(tx: TransactionData): String {
         val hashData = buildString {
             append(tx.date)
-            append(tx.type)
             append(tx.amount)
             append(tx.transactionAmount ?: "")
             append(tx.transactionCurrency ?: "")
@@ -168,7 +158,6 @@ object StatementRepository {
 
 data class TransactionData(
     val date: java.time.LocalDate,
-    val type: String,
 
     // Amount in account currency
     val amount: BigDecimal,

@@ -12,11 +12,6 @@ data class BankData(
     val name: String
 )
 
-data class TransactionTypeData(
-    val id: Int,
-    val name: String
-)
-
 data class AccountData(
     val id: Int,
     val accountNumber: String,
@@ -52,31 +47,6 @@ object AccountRepository {
 
             logger.info("Created new bank: '$bankName'")
             bankId.value
-        }
-    }
-
-    /**
-     * Find or create a transaction type by name.
-     * Returns the transaction type ID.
-     */
-    suspend fun findOrCreateTransactionType(typeName: String): Int = newSuspendedTransaction(Dispatchers.IO) {
-        // Try to find existing transaction type
-        val existingType = TransactionTypes
-            .selectAll()
-            .where { TransactionTypes.name eq typeName }
-            .singleOrNull()
-
-        if (existingType != null) {
-            existingType[TransactionTypes.id].value
-        } else {
-            // Create new transaction type
-            val typeId = TransactionTypes.insert {
-                it[TransactionTypes.name] = typeName
-                it[TransactionTypes.createdAt] = LocalDateTime.now()
-            } get TransactionTypes.id
-
-            logger.info("Created new transaction type: '$typeName'")
-            typeId.value
         }
     }
 
@@ -163,18 +133,4 @@ object AccountRepository {
             }
     }
 
-    /**
-     * Get all transaction types
-     */
-    suspend fun getAllTransactionTypes(): List<TransactionTypeData> = newSuspendedTransaction(Dispatchers.IO) {
-        TransactionTypes
-            .selectAll()
-            .orderBy(TransactionTypes.name to SortOrder.ASC)
-            .map { row ->
-                TransactionTypeData(
-                    id = row[TransactionTypes.id].value,
-                    name = row[TransactionTypes.name]
-                )
-            }
-    }
 }
