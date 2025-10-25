@@ -1,6 +1,8 @@
 package database
 
+import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
@@ -16,7 +18,10 @@ data class ImportResult(
 object StatementRepository {
     private val logger = LoggerFactory.getLogger(StatementRepository::class.java)
 
-    fun saveTransactions(transactions: List<TransactionData>): ImportResult = transaction {
+    suspend fun saveTransactions(
+        transactions: List<TransactionData>,
+        onProgress: suspend (processed: Int, total: Int) -> Unit = { _, _ -> }
+    ): ImportResult = newSuspendedTransaction(Dispatchers.IO) {
         val totalCount = transactions.size
 
         // Group transactions by date and assign daily sequence numbers
@@ -87,6 +92,7 @@ object StatementRepository {
             val percentage = (processedCount * 100) / totalToProcess
             if (processedCount % (totalToProcess / 10).coerceAtLeast(1) == 0 || processedCount == totalToProcess) {
                 logger.info("Import progress: $processedCount/$totalToProcess ($percentage%) - $importedCount new, ${processedCount - importedCount} duplicates")
+                onProgress(processedCount, totalToProcess)
             }
         }
 
