@@ -378,12 +378,19 @@ object ForteBankStatementParser {
 
     /**
      * Joins multiple lines with smart spacing based on capitalization.
-     * Adds space before uppercase letters, removes space before lowercase.
+     *
+     * Rules:
+     * - Lowercase letter at start: join without space (word continuation)
+     * - Uppercase letter at start:
+     *   - If looks like abbreviation continuation (single uppercase or all uppercase): no space
+     *   - Otherwise: add space
      *
      * Examples:
      * - ["First", "Abu Dhabi Bank"] -> "First Abu Dhabi Bank"
      * - ["Freedom Bank Ka", "zakhstan"] -> "Freedom Bank Kazakhstan"
      * - ["Thai Smart Card C", "ompany"] -> "Thai Smart Card Company"
+     * - ["BC", "C"] -> "BCC" (abbreviation)
+     * - ["Unlimint E", "U Ltd"] -> "Unlimint EU Ltd" (abbreviation)
      */
     private fun smartJoinLines(lines: List<String>): String {
         if (lines.isEmpty()) return ""
@@ -397,15 +404,25 @@ object ForteBankStatementParser {
                 continue
             }
 
+            val prevLine = lines[i - 1]
             val currLine = lines[i]
             val firstChar = currLine.firstOrNull()
 
-            if (firstChar?.isUpperCase() == true) {
-                // Current line starts with uppercase - add space
-                result.append(" ").append(currLine)
-            } else {
-                // Current line starts with lowercase or non-letter - join without space
-                result.append(currLine)
+            when {
+                // Lowercase or non-letter at start: join without space (word continuation)
+                firstChar?.isLowerCase() == true || !firstChar?.isLetter()!! -> {
+                    result.append(currLine)
+                }
+                // Current line looks like abbreviation part (only uppercase letters, possibly 1-2 chars)
+                // AND previous line ends with uppercase letter
+                // Example: "BC" + "C" -> "BCC", "E" + "U" -> "EU"
+                isAbbreviationContinuation(prevLine, currLine) -> {
+                    result.append(currLine)
+                }
+                // Otherwise: uppercase at start, add space
+                else -> {
+                    result.append(" ").append(currLine)
+                }
             }
         }
 
@@ -413,5 +430,25 @@ object ForteBankStatementParser {
             .replace(Regex("-\\s+"), "-")  // Handle hyphenated breaks: "SUPER- MARKET" -> "SUPER-MARKET"
             .replace(Regex("\\s+"), " ")    // Normalize multiple spaces to single space
             .trim()
+    }
+
+    /**
+     * Check if current line is a continuation of an abbreviation.
+     *
+     * Examples:
+     * - prevLine="BC", currLine="C" -> true (BCC)
+     * - prevLine="Unlimint E", currLine="U Ltd" -> true (EU before Ltd)
+     * - prevLine="First", currLine="Abu Dhabi" -> false (new word)
+     */
+    private fun isAbbreviationContinuation(prevLine: String, currLine: String): Boolean {
+        // Previous line must end with uppercase letter
+        val prevEndsWithUpper = prevLine.lastOrNull()?.isUpperCase() == true
+        if (!prevEndsWithUpper) return false
+
+        // Current line should be 1-2 uppercase letters, possibly followed by space and more text
+        // Examples: "C", "U Ltd", "EU"
+        val startsWithAbbreviation = Regex("^[A-Z]{1,2}(\\s|$)").find(currLine) != null
+
+        return startsWithAbbreviation
     }
 }
