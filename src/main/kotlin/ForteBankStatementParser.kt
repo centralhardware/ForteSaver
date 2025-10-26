@@ -339,11 +339,11 @@ object ForteBankStatementParser {
         val bankMatch = bankPattern.find(details)
         if (bankMatch != null) {
             bankName = bankMatch.groupValues[1].trim()
-            // Normalize whitespace and check if it's "Bank not specified"
+            // Normalize whitespace and check if it's "Bank not specified" or "Банк не определён"
             // PDF extraction sometimes adds extra spaces: "Bank not specifi ed", "Bank not spec ified", etc.
             // Remove ALL spaces (including within words) before comparing
             val normalizedBankName = bankName.replace(Regex("\\s+"), "").lowercase()
-            if (normalizedBankName == "banknotspecified") {
+            if (normalizedBankName == "banknotspecified" || normalizedBankName == "банкнеопределён") {
                 bankName = null
             }
         }
@@ -377,13 +377,13 @@ object ForteBankStatementParser {
     }
 
     /**
-     * Intelligently joins multiple lines, handling word breaks that occur without hyphens.
+     * Joins multiple lines with smart spacing based on capitalization.
+     * Adds space before uppercase letters, removes space before lowercase.
      *
      * Examples:
-     * - ["SUPER TURTLE PUBLIC LIMI", "TED BANGKOK"] -> "SUPER TURTLE PUBLIC LIMITED BANGKOK"
-     * - ["Bank not specifie", "d, MCC: 5399"] -> "Bank not specified, MCC: 5399"
-     * - ["Freedom Bank Ka", "zakhstan JSC"] -> "Freedom Bank Kazakhstan JSC"
-     * - ["Thai Smart Card C", "ompany Limited"] -> "Thai Smart Card Company Limited"
+     * - ["First", "Abu Dhabi Bank"] -> "First Abu Dhabi Bank"
+     * - ["Freedom Bank Ka", "zakhstan"] -> "Freedom Bank Kazakhstan"
+     * - ["Thai Smart Card C", "ompany"] -> "Thai Smart Card Company"
      */
     private fun smartJoinLines(lines: List<String>): String {
         if (lines.isEmpty()) return ""
@@ -397,37 +397,15 @@ object ForteBankStatementParser {
                 continue
             }
 
-            val prevLine = lines[i - 1]
             val currLine = lines[i]
+            val firstChar = currLine.firstOrNull()
 
-            // Detect word continuation in several ways:
-
-            // 1. Previous line ends with short fragment (1-3 letters at the end of last word)
-            val prevEndsWithShortFragment = Regex("\\b([A-Za-z]{1,3})$").find(prevLine) != null
-
-            // 2. Current line starts with lowercase letter (clear continuation)
-            val currStartsWithLowercase = currLine.firstOrNull()?.isLowerCase() == true
-
-            // 3. Current line starts with short fragment (1-4 letters) followed by non-letter
-            val currStartsWithShortFragment = Regex("^([A-Za-z]{1,4})([^A-Za-z].*|$)").find(currLine) != null
-
-            // 4. Current line starts with uppercase and looks like a new phrase (multiple words)
-            // Example: "Abu Dhabi Bank" is clearly a new phrase, not continuation of "First"
-            val currLooksLikeNewPhrase = currLine.firstOrNull()?.isUpperCase() == true &&
-                                         currLine.contains(" ") &&
-                                         !currStartsWithShortFragment
-
-            val isWordContinuation = (prevEndsWithShortFragment || currStartsWithLowercase || currStartsWithShortFragment) &&
-                                     prevLine.lastOrNull()?.isLetter() == true &&
-                                     currLine.firstOrNull()?.isLetter() == true &&
-                                     !currLooksLikeNewPhrase
-
-            if (isWordContinuation) {
-                // This looks like word continuation - join without space
-                result.append(currLine)
-            } else {
-                // Regular word - join with space
+            if (firstChar?.isUpperCase() == true) {
+                // Current line starts with uppercase - add space
                 result.append(" ").append(currLine)
+            } else {
+                // Current line starts with lowercase or non-letter - join without space
+                result.append(currLine)
             }
         }
 
