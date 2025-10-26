@@ -121,7 +121,8 @@ object LocationParsingService {
         }
 
         // Determine how many words belong to the city name
-        val cityWordCount = determineCityWordCount(wordsBeforeCountry)
+        // Pass country code for GeoNames validation
+        val cityWordCount = determineCityWordCount(wordsBeforeCountry, countryCode)
 
         // Extract city (take last N words before country code)
         val city = wordsBeforeCountry
@@ -137,10 +138,24 @@ object LocationParsingService {
     /**
      * Determine how many words from the end belong to the city name.
      * This uses heuristics to handle multi-word city names.
+     *
+     * @param words Words before the country code
+     * @param countryCode Country code for GeoNames validation (optional)
      */
-    private fun determineCityWordCount(words: List<String>): Int {
+    private fun determineCityWordCount(words: List<String>, countryCode: String? = null): Int {
         if (words.isEmpty()) return 0
-        if (words.size == 1) return 1
+        if (words.size == 1) {
+            // Single word - validate with GeoNamesCityDatabase if country code available
+            if (countryCode != null) {
+                val cityName = words[0]
+                if (GeoNamesCityDatabase.isCityInCountry(cityName, countryCode)) {
+                    return 1
+                }
+                // Not a valid city - return 0
+                return 0
+            }
+            return 1
+        }
 
         // Pattern 1: Check for administrative indicators (KAB., KOTA, CITY, AIRPORT, etc.)
         // These are part of the city name - take all words
@@ -150,7 +165,37 @@ object LocationParsingService {
             return words.size
         }
 
-        // Pattern 2: Three words that might be a city (e.g., "HO CHI MINH")
+        // Pattern 2: Try to find the longest valid city name using GeoNamesCityDatabase
+        // Start from longest possible (3 words) down to shortest (1 word)
+        if (countryCode != null) {
+            // Try 3-word cities first
+            if (words.size >= 3) {
+                val threeWordCity = words.takeLast(3).joinToString(" ")
+                if (GeoNamesCityDatabase.isCityInCountry(threeWordCity, countryCode)) {
+                    return 3
+                }
+            }
+
+            // Try 2-word cities
+            if (words.size >= 2) {
+                val twoWordCity = words.takeLast(2).joinToString(" ")
+                if (GeoNamesCityDatabase.isCityInCountry(twoWordCity, countryCode)) {
+                    return 2
+                }
+            }
+
+            // Try 1-word city
+            val oneWordCity = words.last()
+            if (GeoNamesCityDatabase.isCityInCountry(oneWordCity, countryCode)) {
+                return 1
+            }
+
+            // No valid city found via GeoNamesCityDatabase - return 0
+            return 0
+        }
+
+        // Fallback: Use heuristics if no country code provided
+        // Pattern 3: Three words that might be a city (e.g., "HO CHI MINH")
         if (words.size >= 3) {
             val lastThree = words.takeLast(3)
             // Check for specific patterns
@@ -168,7 +213,7 @@ object LocationParsingService {
             }
         }
 
-        // Pattern 3: Two capitalized words (e.g., "SOUTH JAKARTA", "KUALA LUMPUR")
+        // Pattern 4: Two capitalized words (e.g., "SOUTH JAKARTA", "KUALA LUMPUR")
         if (words.size >= 2) {
             val lastTwo = words.takeLast(2)
             if (lastTwo.all { it[0].isUpperCase() || it.all { c -> c.isLetter() } }) {

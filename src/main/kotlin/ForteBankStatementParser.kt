@@ -307,7 +307,7 @@ object ForteBankStatementParser {
         }
     }
 
-    private data class TransactionDetails(
+    data class TransactionDetails(
         val merchantName: String?,
         val merchantLocation: String?,
         val mccCode: String?,
@@ -315,7 +315,7 @@ object ForteBankStatementParser {
         val paymentMethod: String?
     )
 
-    private fun parseDetails(details: String): TransactionDetails {
+    fun parseDetails(details: String): TransactionDetails {
         if (details.isBlank()) {
             return TransactionDetails(null, null, null, null, null)
         }
@@ -378,15 +378,8 @@ object ForteBankStatementParser {
             }
         } else {
             // Format 2: Space-separated "MERCHANT PARTS... CITY PARTS COUNTRY_CODE"
-            // Strategy:
-            // - Last word (2 letters) = country code
-            // - Last 1-3 words before country = city (try to detect multi-word cities)
-            // - Everything else = merchant name
-            //
-            // Examples:
-            // - "STARBUCKS DEWATA BALI BADUNG ID" -> merchant="STARBUCKS DEWATA BALI", city="BADUNG", country="ID"
-            // - "Grab* A 7HU8XEJWWGWB8W South Jakart ID" -> merchant="Grab* A 7HU8XEJWWGWB8W", city="South Jakart", country="ID"
-            // - "WEI FU DIMSUM BAR BADUNG KAB. ID" -> merchant="WEI FU DIMSUM BAR", city="BADUNG KAB.", country="ID"
+            // Strategy: Use LocationParsingService to intelligently detect city and country
+            // Then extract merchant name as everything before the location
 
             // Remove known suffixes (MCC, bank, payment method) first
             var cleanDetails = details
@@ -396,57 +389,62 @@ object ForteBankStatementParser {
 
             val words = cleanDetails.split("\\s+".toRegex()).filter { it.isNotBlank() }
 
-            if (words.size >= 2) {
-                // Check if last word is 2-letter country code
-                val lastWord = words.last()
-                val isCountryCode = lastWord.length == 2 && lastWord.all { it.isLetter() }
-
-                if (isCountryCode) {
-                    val countryCode = lastWord
-                    val wordsBeforeCountry = words.dropLast(1)
-
-                    // Try to detect city (last 1-3 words before country)
-                    // Heuristic: Take last 1-3 words that look like location
-                    var cityWordCount = 1 // Default: assume single-word city
-
-                    if (wordsBeforeCountry.size >= 2) {
-                        val lastTwo = wordsBeforeCountry.takeLast(2).joinToString(" ")
-
-                        // Check for known multi-word patterns:
-                        // - "South Jakarta", "Ho Chi Minh", "Kuala Lumpur", etc.
-                        // - Contains "KAB." (Kabupaten - district in Indonesian)
-                        // - Two capitalized words
-                        if (lastTwo.contains("KAB.") ||
-                            lastTwo.contains("KOTA") ||
-                            lastTwo.matches(Regex("[A-Z][a-z]+ [A-Z][a-z]+"))) {
-                            cityWordCount = 2
-                        }
-                    }
-
-                    if (wordsBeforeCountry.size >= 3 && cityWordCount == 1) {
-                        val lastThree = wordsBeforeCountry.takeLast(3).joinToString(" ")
-
-                        // Check for 3-word cities like "Ho Chi Minh City"
-                        if (lastThree.matches(Regex("[A-Z][a-z]+ [A-Z][a-z]+ [A-Z][a-z]+"))) {
-                            cityWordCount = 3
-                        }
-                    }
-
-                    // Extract city and merchant
-                    val cityWords = wordsBeforeCountry.takeLast(cityWordCount)
-                    val merchantWords = wordsBeforeCountry.dropLast(cityWordCount)
-
-                    merchantName = merchantWords.joinToString(" ").ifBlank { null }
-                    merchantLocation = (cityWords.joinToString(" ") + " " + countryCode).trim()
-                } else {
-                    // No country code - treat first word as merchant, rest as location
-                    merchantName = words.firstOrNull()
-                    merchantLocation = words.drop(1).joinToString(" ").ifBlank { null }
-                }
-            } else if (words.size == 1) {
-                // Only one word - could be merchant or country
-                merchantName = words[0]
+            if (words.isEmpty()) {
+                merchantName = null
                 merchantLocation = null
+            } else {
+                // Try to parse location from the end of the string
+                // Strategy: Look for valid country code at the end, then determine city size
+                var locationWordCount = 0
+
+                // First, check if last word is a valid country code
+                val lastWord = words.last()
+                val countryCodeCheck = services.LocationParsingService.parseLocation(lastWord)
+
+                if (countryCodeCheck.countryCode != null) {
+                    // Found country code! Now figure out how many words before it belong to the city
+                    // Start with just the country code, then try adding city words
+                    var bestLocationMatch: String = lastWord
+                    var bestLocationWordCount = 1
+                    var previousCityWordCount = 0
+
+                    // Try adding 1, 2, 3 words before the country code as city name
+                    for (cityWords in 1..minOf(3, words.size - 1)) {
+                        val potentialLocation = words.takeLast(cityWords + 1).joinToString(" ")
+                        val parsed = services.LocationParsingService.parseLocation(potentialLocation)
+
+                        if (parsed.countryCode != null && parsed.city != null) {
+                            val currentCityWordCount = parsed.city.split(" ").size
+
+                            // Only accept this if the city grew (means we're adding to a multi-word city)
+                            // or if this is the first city we found
+                            if (previousCityWordCount == 0 || currentCityWordCount > previousCityWordCount) {
+                                bestLocationMatch = potentialLocation
+                                bestLocationWordCount = cityWords + 1
+                                previousCityWordCount = currentCityWordCount
+                            } else {
+                                // City didn't grow - we're adding merchant words
+                                break
+                            }
+                        } else {
+                            // This combination doesn't parse correctly
+                            break
+                        }
+                    }
+
+                    merchantLocation = bestLocationMatch
+                    locationWordCount = bestLocationWordCount
+                }
+
+                // Extract merchant name (everything before location)
+                if (locationWordCount > 0) {
+                    val merchantWords = words.dropLast(locationWordCount)
+                    merchantName = merchantWords.joinToString(" ").ifBlank { null }
+                } else {
+                    // No valid location found - treat everything as merchant name
+                    merchantName = cleanDetails.ifBlank { null }
+                    merchantLocation = null
+                }
             }
         }
 
