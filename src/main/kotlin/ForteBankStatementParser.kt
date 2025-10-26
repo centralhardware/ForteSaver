@@ -248,8 +248,8 @@ object ForteBankStatementParser {
                 // Remove date, amounts, and type prefix to get clean merchant details
                 var merchantDetails = fullText
 
-                // Remove date prefix: "16.10.2025 " or "07.06.2025-" (minus can stick to date)
-                merchantDetails = merchantDetails.replaceFirst(Regex("^\\d{2}\\.\\d{2}\\.\\d{4}[-\\s]+"), "")
+                // Remove date prefix: "16.10.2025 " or "07.06.2025-" or "16.07.20238.74" (separator can be missing)
+                merchantDetails = merchantDetails.replaceFirst(Regex("^\\d{2}\\.\\d{2}\\.\\d{4}[-\\s]*"), "")
 
                 // Remove account amount: "-70.80 USD " or "1.89 USD " or "70.80 USD"
                 merchantDetails = merchantDetails.replaceFirst(Regex("^[-]?\\d+\\.\\d{2}\\s+[A-Z]{3}\\s*"), "")
@@ -257,8 +257,8 @@ object ForteBankStatementParser {
                 // Remove transaction amount if present: "(299.00 MYR) " or "(7.80 MYR)"
                 merchantDetails = merchantDetails.replaceFirst(Regex("^\\([\\d.]+\\s+[A-Z]{3}\\)\\s*"), "")
 
-                // Remove transaction type prefix
-                val typePattern = "(Purchase with bonuses|Purchase|Transfer|Refund|Account replenishment|Cash withdrawal|Fee)\\s+"
+                // Remove transaction type prefix (space after type is optional)
+                val typePattern = "(Purchase with bonuses|Purchase|Transfer|Refund|Account replenishment|Cash withdrawal|Fee)\\s*"
                 merchantDetails = merchantDetails.replaceFirst(Regex("^$typePattern"), "")
 
                 val (merchantName, merchantLocation, mccCode, bankName, paymentMethod) = parseDetails(merchantDetails)
@@ -349,27 +349,55 @@ object ForteBankStatementParser {
         }
 
         // Extract merchant name and location
-        // Format: "NSK GROCER- QCM,QUILL CITY MALL,KUALA LUMPUR,MY"
+        // Format 1 (with commas): "NSK GROCER- QCM,QUILL CITY MALL,KUALA LUMPUR,MY"
+        // Format 2 (space-separated): "WWW.BUSTICKET4.ME PODGORICA ME"
         var merchantName: String? = null
         var merchantLocation: String? = null
 
-        // Split by commas
-        val parts = details.split(",").map { it.trim() }
-        if (parts.isNotEmpty()) {
-            // First part is usually merchant name
-            merchantName = parts[0]
+        if (details.contains(",")) {
+            // Format 1: Split by commas
+            val parts = details.split(",").map { it.trim() }
+            if (parts.isNotEmpty()) {
+                // First part is usually merchant name
+                merchantName = parts[0]
 
-            // Try to find location parts (before bank name)
-            val locationParts = mutableListOf<String>()
-            for (part in parts.drop(1)) {
-                if (part.contains("MCC:") || part.contains("Bank") ||
-                    part == "APPLE PAY" || part == "GOOGLE PAY") {
-                    break
+                // Try to find location parts (before bank name)
+                val locationParts = mutableListOf<String>()
+                for (part in parts.drop(1)) {
+                    if (part.contains("MCC:") || part.contains("Bank") ||
+                        part == "APPLE PAY" || part == "GOOGLE PAY") {
+                        break
+                    }
+                    locationParts.add(part)
                 }
-                locationParts.add(part)
+                if (locationParts.isNotEmpty()) {
+                    merchantLocation = locationParts.joinToString(", ")
+                }
             }
-            if (locationParts.isNotEmpty()) {
-                merchantLocation = locationParts.joinToString(", ")
+        } else {
+            // Format 2: Space-separated, likely "MERCHANT CITY COUNTRY_CODE"
+            val words = details.split("\\s+".toRegex()).filter { it.isNotBlank() }
+            if (words.size >= 3) {
+                // Last word is often 2-letter country code
+                val lastWord = words.last()
+                val isCountryCode = lastWord.length == 2 && lastWord.all { it.isLetter() }
+
+                if (isCountryCode && words.size >= 3) {
+                    // "MERCHANT CITY CC" -> merchant="MERCHANT", location="CITY CC"
+                    merchantName = words.dropLast(2).joinToString(" ")
+                    merchantLocation = words.takeLast(2).joinToString(" ")
+                } else if (words.size >= 2) {
+                    // Fallback: last word is location
+                    merchantName = words.dropLast(1).joinToString(" ")
+                    merchantLocation = words.last()
+                }
+            } else if (words.size == 2) {
+                // Only 2 words: "MERCHANT LOCATION"
+                merchantName = words[0]
+                merchantLocation = words[1]
+            } else if (words.size == 1) {
+                // Only merchant name
+                merchantName = words[0]
             }
         }
 
