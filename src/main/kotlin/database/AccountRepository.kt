@@ -23,6 +23,7 @@ object AccountRepository {
 
     /**
      * Find or create a bank by name.
+     * Normalizes bank name by removing all spaces for matching (e.g., "BC C" and "BCC" are the same).
      * Returns the bank ID.
      */
     suspend fun findOrCreateBank(bankName: String?): Int? = newSuspendedTransaction(Dispatchers.IO) {
@@ -30,22 +31,30 @@ object AccountRepository {
             return@newSuspendedTransaction null
         }
 
-        // Try to find existing bank
+        // Normalize: remove all spaces for consistent matching
+        val normalizedName = bankName.replace("\\s+".toRegex(), "")
+
+        // Try to find existing bank with same normalized name
+        // Compare by removing spaces from stored names too
         val existingBank = Banks
             .selectAll()
-            .where { Banks.name eq bankName }
-            .singleOrNull()
+            .map { it }
+            .firstOrNull { row ->
+                val storedName = row[Banks.name]
+                val storedNormalized = storedName.replace("\\s+".toRegex(), "")
+                storedNormalized.equals(normalizedName, ignoreCase = true)
+            }
 
         if (existingBank != null) {
             existingBank[Banks.id].value
         } else {
-            // Create new bank
+            // Create new bank with normalized name (no spaces)
             val bankId = Banks.insert {
-                it[Banks.name] = bankName
+                it[Banks.name] = normalizedName
                 it[Banks.createdAt] = LocalDateTime.now()
             } get Banks.id
 
-            logger.info("Created new bank: '$bankName'")
+            logger.info("Created new bank: '$normalizedName' (original: '$bankName')")
             bankId.value
         }
     }
