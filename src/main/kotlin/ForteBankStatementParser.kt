@@ -375,17 +375,19 @@ object ForteBankStatementParser {
                 }
             }
         } else {
-            // Format 2: Space-separated, likely "MERCHANT CITY COUNTRY_CODE"
+            // Format 2: Space-separated, likely "MERCHANT ADDRESS CITY COUNTRY_CODE"
+            // Examples: "AROMA 104 PODGORICA ME", "WWW.BUSTICKET4.ME PODGORICA ME"
             val words = details.split("\\s+".toRegex()).filter { it.isNotBlank() }
             if (words.size >= 3) {
                 // Last word is often 2-letter country code
                 val lastWord = words.last()
                 val isCountryCode = lastWord.length == 2 && lastWord.all { it.isLetter() }
 
-                if (isCountryCode && words.size >= 3) {
-                    // "MERCHANT CITY CC" -> merchant="MERCHANT", location="CITY CC"
-                    merchantName = words.dropLast(2).joinToString(" ")
-                    merchantLocation = words.takeLast(2).joinToString(" ")
+                if (isCountryCode) {
+                    // "MERCHANT ADDRESS CITY CC" -> merchant="MERCHANT", location="ADDRESS CITY CC"
+                    // First word is usually merchant name, everything else is location
+                    merchantName = words[0]
+                    merchantLocation = words.drop(1).joinToString(" ")
                 } else if (words.size >= 2) {
                     // Fallback: last word is location
                     merchantName = words.dropLast(1).joinToString(" ")
