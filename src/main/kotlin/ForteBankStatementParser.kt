@@ -375,19 +375,40 @@ object ForteBankStatementParser {
                 }
             }
         } else {
-            // Format 2: Space-separated, likely "MERCHANT ADDRESS CITY COUNTRY_CODE"
-            // Examples: "AROMA 104 PODGORICA ME", "WWW.BUSTICKET4.ME PODGORICA ME"
+            // Format 2: Space-separated, likely "MERCHANT NAME PARTS CITY COUNTRY_CODE"
+            // Examples:
+            // - "CAFFE BAR CASPER BUDVA ME"
+            // - "KASA 6 PODGORICA ME"
+            // - "WWW.BUSTICKET4.ME PODGORICA ME"
             val words = details.split("\\s+".toRegex()).filter { it.isNotBlank() }
+
             if (words.size >= 3) {
                 // Last word is often 2-letter country code
                 val lastWord = words.last()
                 val isCountryCode = lastWord.length == 2 && lastWord.all { it.isLetter() }
 
-                if (isCountryCode) {
-                    // "MERCHANT ADDRESS CITY CC" -> merchant="MERCHANT", location="ADDRESS CITY CC"
-                    // First word is usually merchant name, everything else is location
-                    merchantName = words[0]
-                    merchantLocation = words.drop(1).joinToString(" ")
+                if (isCountryCode && words.size >= 3) {
+                    // Format: "MERCHANT PARTS... CITY CC"
+                    // Try to identify city name (word before country code)
+                    // City is typically capitalized and not a number
+                    val secondLastWord = words[words.size - 2]
+
+                    // Check if second-last word looks like a city name
+                    // (starts with capital, not a number, not "KASA")
+                    val looksLikeCity = secondLastWord.firstOrNull()?.isUpperCase() == true &&
+                                       !secondLastWord.all { it.isDigit() } &&
+                                       !secondLastWord.matches(Regex("KASA|\\d+"))
+
+                    if (looksLikeCity) {
+                        // "CAFFE BAR CASPER BUDVA ME" -> merchant="CAFFE BAR CASPER", location="BUDVA ME"
+                        // "KASA 6 PODGORICA ME" -> merchant="KASA 6", location="PODGORICA ME"
+                        merchantName = words.dropLast(2).joinToString(" ")
+                        merchantLocation = words.takeLast(2).joinToString(" ")
+                    } else {
+                        // Fallback: first word is merchant
+                        merchantName = words[0]
+                        merchantLocation = words.drop(1).joinToString(" ")
+                    }
                 } else if (words.size >= 2) {
                     // Fallback: last word is location
                     merchantName = words.dropLast(1).joinToString(" ")
