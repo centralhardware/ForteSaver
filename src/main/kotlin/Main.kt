@@ -27,15 +27,13 @@ suspend fun main() {
         setMyCommands(
             BotCommand("start", "Start the bot"),
             BotCommand("help", "Show help message"),
-            BotCommand("autocategorize", "Auto-categorize merchants"),
-            BotCommand("detecttrips", "Detect trips from transactions")
+            BotCommand("autocategorize", "Auto-categorize merchants")
         )
 
         // Register command handlers
         registerStartCommand()
         registerParseStatementCommand()
         registerAutoCategorizeMerchantsCommand()
-        registerDetectTripsCommand()
 
         logger.info("All handlers registered")
     }.second.join()

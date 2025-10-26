@@ -70,8 +70,6 @@ class MerchantCategorizationServiceTest {
     fun `test categorization by MCC code - grocery store`() = runBlocking {
         val categoryId = MerchantCategorizationService.autoCategorize(
             merchantName = "Unknown Store",
-            countryCode = null,
-            city = null,
             mccCode = "5411" // Grocery Stores
         )
         
@@ -90,8 +88,6 @@ class MerchantCategorizationServiceTest {
     fun `test categorization by MCC code - restaurant`() = runBlocking {
         val categoryId = MerchantCategorizationService.autoCategorize(
             merchantName = "Unknown Restaurant",
-            countryCode = null,
-            city = null,
             mccCode = "5812" // Restaurants
         )
         
@@ -110,8 +106,6 @@ class MerchantCategorizationServiceTest {
     fun `test categorization by name - Russian grocery store`() = runBlocking {
         val categoryId = MerchantCategorizationService.autoCategorize(
             merchantName = "ПЯТЁРОЧКА №123",
-            countryCode = null,
-            city = null,
             mccCode = null
         )
         
@@ -130,8 +124,6 @@ class MerchantCategorizationServiceTest {
     fun `test categorization by name - McDonald's`() = runBlocking {
         val categoryId = MerchantCategorizationService.autoCategorize(
             merchantName = "McDonald's",
-            countryCode = "RU",
-            city = "Moscow",
             mccCode = null
         )
         
@@ -150,8 +142,6 @@ class MerchantCategorizationServiceTest {
     fun `test categorization by name - Yandex Taxi`() = runBlocking {
         val categoryId = MerchantCategorizationService.autoCategorize(
             merchantName = "Yandex.Taxi",
-            countryCode = null,
-            city = null,
             mccCode = null
         )
         
@@ -170,8 +160,6 @@ class MerchantCategorizationServiceTest {
     fun `test categorization by name - Wildberries shopping`() = runBlocking {
         val categoryId = MerchantCategorizationService.autoCategorize(
             merchantName = "WILDBERRIES",
-            countryCode = null,
-            city = null,
             mccCode = null
         )
         
@@ -190,8 +178,6 @@ class MerchantCategorizationServiceTest {
     fun `test no categorization for unknown merchant`() = runBlocking {
         val categoryId = MerchantCategorizationService.autoCategorize(
             merchantName = "Some Random Merchant XYZ",
-            countryCode = null,
-            city = null,
             mccCode = null
         )
         
@@ -203,8 +189,6 @@ class MerchantCategorizationServiceTest {
         // Even though name might suggest "taxi", MCC code says "restaurant"
         val categoryId = MerchantCategorizationService.autoCategorize(
             merchantName = "Taxi Pizza",
-            countryCode = null,
-            city = null,
             mccCode = "5812" // Restaurant MCC
         )
         

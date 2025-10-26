@@ -22,8 +22,6 @@ object MerchantCategorizationService {
      */
     suspend fun autoCategorize(
         merchantName: String,
-        countryCode: String?,
-        city: String?,
         mccCode: String?
     ): Int? {
         // Try MCC code first (most reliable)
@@ -41,7 +39,7 @@ object MerchantCategorizationService {
         }
 
         // Could not auto-categorize
-        logger.debug("Could not auto-categorize merchant: $merchantName (country: $countryCode, city: $city)")
+        logger.debug("Could not auto-categorize merchant: $merchantName")
         return null
     }
 
