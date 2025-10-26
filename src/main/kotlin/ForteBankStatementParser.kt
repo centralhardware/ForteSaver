@@ -377,14 +377,16 @@ object ForteBankStatementParser {
                 }
             }
         } else {
-            // Format 2: Space-separated, likely "MERCHANT NAME PARTS CITY PARTS COUNTRY_CODE"
-            // Strategy: Last word = country code (2 letters), everything else goes to location
-            // Let LocationParsingService handle city extraction later
+            // Format 2: Space-separated "MERCHANT PARTS... CITY PARTS COUNTRY_CODE"
+            // Strategy:
+            // - Last word (2 letters) = country code
+            // - Last 1-3 words before country = city (try to detect multi-word cities)
+            // - Everything else = merchant name
             //
             // Examples:
-            // - "CAFFE BAR CASPER BUDVA ME" -> merchant="CAFFE BAR CASPER", location="BUDVA ME"
-            // - "CIRCLE K HO CHI MINH VN" -> merchant="CIRCLE K", location="HO CHI MINH VN"
-            // - "7-ELEVEN KUALA LUMPUR MY" -> merchant="7-ELEVEN", location="KUALA LUMPUR MY"
+            // - "STARBUCKS DEWATA BALI BADUNG ID" -> merchant="STARBUCKS DEWATA BALI", city="BADUNG", country="ID"
+            // - "Grab* A 7HU8XEJWWGWB8W South Jakart ID" -> merchant="Grab* A 7HU8XEJWWGWB8W", city="South Jakart", country="ID"
+            // - "WEI FU DIMSUM BAR BADUNG KAB. ID" -> merchant="WEI FU DIMSUM BAR", city="BADUNG KAB.", country="ID"
 
             // Remove known suffixes (MCC, bank, payment method) first
             var cleanDetails = details
@@ -400,12 +402,42 @@ object ForteBankStatementParser {
                 val isCountryCode = lastWord.length == 2 && lastWord.all { it.isLetter() }
 
                 if (isCountryCode) {
-                    // Simple strategy: first word = merchant, rest = location (city + country)
-                    // This handles both single and multi-word cities automatically
-                    // LocationParsingService will extract city from this later
+                    val countryCode = lastWord
+                    val wordsBeforeCountry = words.dropLast(1)
 
-                    merchantName = words.first()
-                    merchantLocation = words.drop(1).joinToString(" ")
+                    // Try to detect city (last 1-3 words before country)
+                    // Heuristic: Take last 1-3 words that look like location
+                    var cityWordCount = 1 // Default: assume single-word city
+
+                    if (wordsBeforeCountry.size >= 2) {
+                        val lastTwo = wordsBeforeCountry.takeLast(2).joinToString(" ")
+
+                        // Check for known multi-word patterns:
+                        // - "South Jakarta", "Ho Chi Minh", "Kuala Lumpur", etc.
+                        // - Contains "KAB." (Kabupaten - district in Indonesian)
+                        // - Two capitalized words
+                        if (lastTwo.contains("KAB.") ||
+                            lastTwo.contains("KOTA") ||
+                            lastTwo.matches(Regex("[A-Z][a-z]+ [A-Z][a-z]+"))) {
+                            cityWordCount = 2
+                        }
+                    }
+
+                    if (wordsBeforeCountry.size >= 3 && cityWordCount == 1) {
+                        val lastThree = wordsBeforeCountry.takeLast(3).joinToString(" ")
+
+                        // Check for 3-word cities like "Ho Chi Minh City"
+                        if (lastThree.matches(Regex("[A-Z][a-z]+ [A-Z][a-z]+ [A-Z][a-z]+"))) {
+                            cityWordCount = 3
+                        }
+                    }
+
+                    // Extract city and merchant
+                    val cityWords = wordsBeforeCountry.takeLast(cityWordCount)
+                    val merchantWords = wordsBeforeCountry.dropLast(cityWordCount)
+
+                    merchantName = merchantWords.joinToString(" ").ifBlank { null }
+                    merchantLocation = (cityWords.joinToString(" ") + " " + countryCode).trim()
                 } else {
                     // No country code - treat first word as merchant, rest as location
                     merchantName = words.firstOrNull()
