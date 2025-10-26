@@ -3,7 +3,7 @@
 -- The merchant name becomes unique identifier as it contains the full merchant details
 
 -- Drop the old unique constraint (name + location)
-DROP INDEX IF EXISTS unique_merchant;
+ALTER TABLE merchants DROP CONSTRAINT IF EXISTS unique_merchant;
 
 -- Remove the location column
 ALTER TABLE merchants DROP COLUMN IF EXISTS location;
