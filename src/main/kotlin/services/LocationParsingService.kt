@@ -33,207 +33,86 @@ object LocationParsingService {
     )
 
     /**
-     * Parse location string from bank statement.
+     * Parse location from merchant name string.
      *
-     * Supported formats:
-     * - "KUALA LUMPUR,MY" -> city="KUALA LUMPUR", country="MY"
-     * - "BUDVA ME" -> city="BUDVA", country="ME"
-     * - "PODGORICA ME" -> city="PODGORICA", country="ME"
-     * - "LONDON GB" -> city="LONDON", country="GB"
-     * - "QUILL CITY MALL,KUALA LUMPUR,MY" -> city="KUALA LUMPUR", country="MY"
-     * - "SOUTH JAKARTA ID" -> city="SOUTH JAKARTA", country="ID"
-     * - "BADUNG KAB. ID" -> city="BADUNG KAB.", country="ID"
-     * - "HO CHI MINH CITY VN" -> city="HO CHI MINH CITY", country="VN"
+     * New logic:
+     * - Country is ALWAYS the last word (must be valid 2-letter country code)
+     * - City is the second from the end, validated against GeoNames database
+     * - If city is multi-word, we check multiple words starting from second-to-last position
+     *
+     * Examples:
+     * - "SOME MERCHANT PODGORICA ME" -> city="PODGORICA", country="ME"
+     * - "STORE NAME KUALA LUMPUR MY" -> city="KUALA LUMPUR", country="MY"
+     * - "WWW.SITE.COM SARAJEVO BA" -> city="SARAJEVO", country="BA"
      */
-    fun parseLocation(location: String?): ParsedLocation {
-        if (location.isNullOrBlank()) {
+    fun parseLocation(merchantName: String?): ParsedLocation {
+        if (merchantName.isNullOrBlank()) {
             return ParsedLocation(null, null)
         }
 
-        val cleaned = location.trim().uppercase()
-
-        // Try comma-separated format first (most reliable)
-        // Format: "MERCHANT,CITY,COUNTRY" or "CITY,COUNTRY"
-        if (cleaned.contains(',')) {
-            return parseCommaFormat(cleaned)
-        }
-
-        // Try space-separated format: "CITY PARTS... COUNTRY"
-        return parseSpaceFormat(cleaned)
-    }
-
-    /**
-     * Parse comma-separated location format.
-     * Format: "PART1,PART2,...,PARTN" where last part is country code.
-     */
-    private fun parseCommaFormat(location: String): ParsedLocation {
-        val parts = location.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-
-        if (parts.isEmpty()) {
-            return ParsedLocation(null, null)
-        }
-
-        // Last part should be 2-letter country code
-        val lastPart = parts.last()
-        if (isCountryCode(lastPart)) {
-            val countryCode = lastPart
-
-            // Second-to-last part is likely the city
-            val city = if (parts.size >= 2) {
-                parts[parts.size - 2]
-            } else {
-                null
-            }
-
-            return ParsedLocation(countryCode, city)
-        }
-
-        // No valid country code found
-        return ParsedLocation(null, null)
-    }
-
-    /**
-     * Parse space-separated location format.
-     * Format: "CITY PARTS... COUNTRY_CODE"
-     *
-     * This is more complex because we need to detect multi-word cities.
-     */
-    private fun parseSpaceFormat(location: String): ParsedLocation {
-        val words = location.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        val cleaned = merchantName.trim().uppercase()
+        val words = cleaned.split(Regex("\\s+")).filter { it.isNotEmpty() }
 
         if (words.isEmpty()) {
             return ParsedLocation(null, null)
         }
 
-        // Check if last word is a country code
+        // Country is ALWAYS the last word
         val lastWord = words.last()
+        
+        // Check if it's a valid country code
         if (!isCountryCode(lastWord)) {
-            // No country code found - try to extract anyway
-            // Maybe the location is just a city name
-            return ParsedLocation(null, location)
+            // No valid country code at the end
+            return ParsedLocation(null, null)
         }
 
         val countryCode = lastWord
         val wordsBeforeCountry = words.dropLast(1)
 
         if (wordsBeforeCountry.isEmpty()) {
+            // Only country code, no city
             return ParsedLocation(countryCode, null)
         }
 
-        // Determine how many words belong to the city name
-        // Pass country code for GeoNames validation
-        val cityWordCount = determineCityWordCount(wordsBeforeCountry, countryCode)
+        // Try to find city starting from second-to-last position
+        // Check 1-word, 2-word, 3-word cities
+        val city = findCityInWords(wordsBeforeCountry, countryCode)
 
-        // Extract city (take last N words before country code)
-        val cityInput = wordsBeforeCountry
-            .takeLast(cityWordCount)
-            .joinToString(" ")
-
-        // Get canonical city name from database (handles fuzzy matching)
-        val city = if (cityInput.isNotBlank()) {
-            GeoNamesCityDatabase.findCityMatch(cityInput, countryCode) ?: cityInput
-        } else {
-            null
-        }
-
-        return ParsedLocation(
-            countryCode,
-            city
-        )
+        return ParsedLocation(countryCode, city)
     }
 
     /**
-     * Determine how many words from the end belong to the city name.
-     * This uses heuristics to handle multi-word city names.
-     *
-     * @param words Words before the country code
-     * @param countryCode Country code for GeoNames validation (optional)
+     * Find city name from words before the country code.
+     * Tries to match 1-word, 2-word, or 3-word cities against GeoNames database.
+     * Starts from the end (second-to-last position) and works backwards.
      */
-    private fun determineCityWordCount(words: List<String>, countryCode: String? = null): Int {
-        if (words.isEmpty()) return 0
-        if (words.size == 1) {
-            // Single word - validate with GeoNamesCityDatabase if country code available
-            if (countryCode != null) {
-                val cityName = words[0]
-                if (GeoNamesCityDatabase.isCityInCountry(cityName, countryCode)) {
-                    return 1
-                }
-                // Not a valid city - return 0
-                return 0
-            }
-            return 1
-        }
+    private fun findCityInWords(words: List<String>, countryCode: String): String? {
+        if (words.isEmpty()) return null
 
-        // Pattern 1: Check for administrative indicators (KAB., KOTA, CITY, AIRPORT, etc.)
-        // These are part of the city name - take all words
-        val lastWord = words.last()
-        if (lastWord in CITY_INDICATORS || lastWord.endsWith(".")) {
-            // The indicator is at the end - take all words before country code
-            return words.size
-        }
-
-        // Pattern 2: Try to find the longest valid city name using GeoNamesCityDatabase
-        // Start from longest possible (3 words) down to shortest (1 word)
-        if (countryCode != null) {
-            // Try 3-word cities first
-            if (words.size >= 3) {
-                val threeWordCity = words.takeLast(3).joinToString(" ")
-                if (GeoNamesCityDatabase.isCityInCountry(threeWordCity, countryCode)) {
-                    return 3
-                }
-            }
-
-            // Try 2-word cities
-            if (words.size >= 2) {
-                val twoWordCity = words.takeLast(2).joinToString(" ")
-                if (GeoNamesCityDatabase.isCityInCountry(twoWordCity, countryCode)) {
-                    return 2
-                }
-            }
-
-            // Try 1-word city
-            val oneWordCity = words.last()
-            if (GeoNamesCityDatabase.isCityInCountry(oneWordCity, countryCode)) {
-                return 1
-            }
-
-            // No valid city found via GeoNamesCityDatabase - return 0
-            return 0
-        }
-
-        // Fallback: Use heuristics if no country code provided
-        // Pattern 3: Three words that might be a city (e.g., "HO CHI MINH")
+        // Try 3-word cities (starting from the last 3 words)
         if (words.size >= 3) {
-            val lastThree = words.takeLast(3)
-            // Check for specific patterns
-            if (lastThree.all { it.length <= 10 && it.all { c -> c.isLetter() } }) {
-                // Could be a 3-word city
-                // Check if first word is a direction or common prefix
-                val firstWord = lastThree[0]
-                if (firstWord in setOf("NORTH", "SOUTH", "EAST", "WEST", "NEW", "SAN", "LOS", "HO")) {
-                    return 3
-                }
-                // Check for Vietnamese/Asian city patterns (short words)
-                if (lastThree.all { it.length <= 5 }) {
-                    return 3
-                }
+            val threeWordCity = words.takeLast(3).joinToString(" ")
+            if (GeoNamesCityDatabase.isCityInCountry(threeWordCity, countryCode)) {
+                return GeoNamesCityDatabase.findCityMatch(threeWordCity, countryCode)
             }
         }
 
-        // Pattern 4: Two capitalized words (e.g., "SOUTH JAKARTA", "KUALA LUMPUR")
+        // Try 2-word cities (starting from the last 2 words)
         if (words.size >= 2) {
-            val lastTwo = words.takeLast(2)
-            if (lastTwo.all { it[0].isUpperCase() || it.all { c -> c.isLetter() } }) {
-                // Check if they look like a city name (not merchant name)
-                // Heuristic: If both words are relatively short (< 15 chars), likely a city
-                if (lastTwo.all { it.length < 15 }) {
-                    return 2
-                }
+            val twoWordCity = words.takeLast(2).joinToString(" ")
+            if (GeoNamesCityDatabase.isCityInCountry(twoWordCity, countryCode)) {
+                return GeoNamesCityDatabase.findCityMatch(twoWordCity, countryCode)
             }
         }
 
-        // Default: assume single-word city
-        return 1
+        // Try 1-word city (the last word before country)
+        val oneWordCity = words.last()
+        if (GeoNamesCityDatabase.isCityInCountry(oneWordCity, countryCode)) {
+            return GeoNamesCityDatabase.findCityMatch(oneWordCity, countryCode)
+        }
+
+        // No valid city found in database
+        return null
     }
 
     /**

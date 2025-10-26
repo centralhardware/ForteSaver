@@ -101,7 +101,6 @@ object TripRepository {
                         date = row[Transactions.transactionDate],
                         amount = row[Transactions.amount],
                         merchantName = row[Merchants.name],
-                        merchantLocation = row[Merchants.location],
                         description = row[Transactions.description]
                     )
                 }
@@ -135,7 +134,6 @@ object TripRepository {
         val date: LocalDate,
         val amount: BigDecimal,
         val merchantName: String,
-        val merchantLocation: String?,
         val description: String?
     )
 

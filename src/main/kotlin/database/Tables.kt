@@ -23,8 +23,7 @@ object Categories : IntIdTable("categories") {
 }
 
 object Merchants : IntIdTable("merchants") {
-    val name = varchar("name", 500)
-    val location = text("location").nullable()
+    val name = varchar("name", 500).uniqueIndex()
     val mccCode = varchar("mcc_code", 10).nullable()
     val categoryId = reference("category_id", Categories).nullable()
     val needsCategorization = bool("needs_categorization").default(true)
@@ -34,8 +33,6 @@ object Merchants : IntIdTable("merchants") {
     val updatedAt = datetime("updated_at")
 
     init {
-        // Unique constraint on merchant name + location combo
-        uniqueIndex("unique_merchant", name, location)
         index("idx_merchants_name", false, name)
         index("idx_merchants_category", false, categoryId)
         index("idx_merchants_needs_categorization", false, needsCategorization)

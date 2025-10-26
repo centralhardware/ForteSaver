@@ -350,109 +350,20 @@ object ForteBankStatementParser {
             }
         }
 
-        // Extract merchant name and location
-        // Format 1 (with commas): "NSK GROCER- QCM,QUILL CITY MALL,KUALA LUMPUR,MY"
-        // Format 2 (space-separated): "WWW.BUSTICKET4.ME PODGORICA ME"
+        // Extract merchant name - we no longer split name and location
+        // The full merchant details string (minus MCC, bank, payment method) becomes the merchant name
         var merchantName: String? = null
-        var merchantLocation: String? = null
 
-        if (details.contains(",")) {
-            // Format 1: Split by commas
-            val parts = details.split(",").map { it.trim() }
-            if (parts.isNotEmpty()) {
-                // First part is usually merchant name
-                merchantName = parts[0]
+        // Remove known suffixes (MCC, bank, payment method) from the end
+        var cleanDetails = details
+        cleanDetails = cleanDetails.replaceFirst(Regex(",\\s*[^,]+,\\s*MCC:.*$"), "")  // Remove ", Bank, MCC: ..."
+        cleanDetails = cleanDetails.replaceFirst(Regex("\\s*MCC:.*$"), "")  // Remove " MCC: ..."
+        cleanDetails = cleanDetails.replaceFirst(Regex("\\s*APPLE PAY.*$"), "")
+        cleanDetails = cleanDetails.replaceFirst(Regex("\\s*GOOGLE PAY.*$"), "")
 
-                // Try to find location parts (before bank name)
-                val locationParts = mutableListOf<String>()
-                for (part in parts.drop(1)) {
-                    if (part.contains("MCC:") || part.contains("Bank") ||
-                        part == "APPLE PAY" || part == "GOOGLE PAY") {
-                        break
-                    }
-                    locationParts.add(part)
-                }
-                if (locationParts.isNotEmpty()) {
-                    merchantLocation = locationParts.joinToString(", ")
-                }
-            }
-        } else {
-            // Format 2: Space-separated "MERCHANT PARTS... CITY PARTS COUNTRY_CODE"
-            // Strategy: Use LocationParsingService to intelligently detect city and country
-            // Then extract merchant name as everything before the location
+        merchantName = cleanDetails.trim().ifBlank { null }
 
-            // Remove known suffixes (MCC, bank, payment method) first
-            var cleanDetails = details
-            cleanDetails = cleanDetails.replaceFirst(Regex("\\s*MCC:.*$"), "")
-            cleanDetails = cleanDetails.replaceFirst(Regex("\\s*APPLE PAY.*$"), "")
-            cleanDetails = cleanDetails.replaceFirst(Regex("\\s*GOOGLE PAY.*$"), "")
-
-            val words = cleanDetails.split("\\s+".toRegex()).filter { it.isNotBlank() }
-
-            if (words.isEmpty()) {
-                merchantName = null
-                merchantLocation = null
-            } else {
-                // Try to parse location from the end of the string
-                // Strategy: Look for valid country code at the end, then determine city size
-                var locationWordCount = 0
-
-                // First, check if last word is a valid country code
-                val lastWord = words.last()
-                val countryCodeCheck = services.LocationParsingService.parseLocation(lastWord)
-
-                if (countryCodeCheck.countryCode != null) {
-                    // Found country code! Now figure out how many words before it belong to the city
-                    // Start with just the country code, then try adding city words
-                    var bestLocationMatch: String = lastWord
-                    var bestLocationWordCount = 1
-                    var previousCityWordCount = 0
-                    var foundCity = false
-
-                    // Try adding 1, 2, 3 words before the country code as city name
-                    for (cityWords in 1..minOf(3, words.size - 1)) {
-                        val potentialLocation = words.takeLast(cityWords + 1).joinToString(" ")
-                        val parsed = services.LocationParsingService.parseLocation(potentialLocation)
-
-                        if (parsed.countryCode != null && parsed.city != null) {
-                            foundCity = true
-                            val currentCityWordCount = parsed.city.split(" ").size
-
-                            // Only accept this if the city grew (means we're adding to a multi-word city)
-                            // or if this is the first city we found
-                            if (previousCityWordCount == 0 || currentCityWordCount > previousCityWordCount) {
-                                bestLocationMatch = potentialLocation
-                                bestLocationWordCount = cityWords + 1
-                                previousCityWordCount = currentCityWordCount
-                            } else {
-                                // City didn't grow - we're adding merchant words
-                                break
-                            }
-                        } else if (foundCity) {
-                            // We found a city before but this longer combination doesn't work
-                            // Stop trying longer combinations
-                            break
-                        }
-                        // else: No city found yet, continue trying longer combinations
-                    }
-
-                    merchantLocation = bestLocationMatch
-                    locationWordCount = bestLocationWordCount
-                }
-
-                // Extract merchant name (everything before location)
-                if (locationWordCount > 0) {
-                    val merchantWords = words.dropLast(locationWordCount)
-                    merchantName = merchantWords.joinToString(" ").ifBlank { null }
-                } else {
-                    // No valid location found - treat everything as merchant name
-                    merchantName = cleanDetails.ifBlank { null }
-                    merchantLocation = null
-                }
-            }
-        }
-
-        return TransactionDetails(merchantName, merchantLocation, mccCode, bankName, paymentMethod)
+        return TransactionDetails(merchantName, null, mccCode, bankName, paymentMethod)
     }
 
     /**

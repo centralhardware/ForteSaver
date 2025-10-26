@@ -12,7 +12,6 @@ import java.time.LocalDateTime
 data class MerchantData(
     val id: Int,
     val name: String,
-    val location: String?,
     val mccCode: String?,
     val categoryId: Int?,
     val needsCategorization: Boolean,
@@ -24,8 +23,9 @@ object MerchantRepository {
     private val logger = LoggerFactory.getLogger(MerchantRepository::class.java)
 
     /**
-     * Find or create a merchant based on name and location.
+     * Find or create a merchant based on name.
      * If merchant doesn't exist, creates it and attempts automatic categorization.
+     * Name should contain the full merchant details string (merchant name + location).
      * Returns the merchant ID.
      */
     suspend fun findOrCreateMerchant(
@@ -38,35 +38,32 @@ object MerchantRepository {
             return@newSuspendedTransaction null
         }
 
-        // Normalize location (null if blank)
-        val normalizedLocation = location?.takeIf { it.isNotBlank() }
-
-        // Try to find existing merchant by name and location
+        // Try to find existing merchant by name only
         val existingMerchant = Merchants
             .selectAll()
-            .where { (Merchants.name eq name) and (Merchants.location eq normalizedLocation) }
+            .where { Merchants.name eq name }
             .singleOrNull()
 
         if (existingMerchant != null) {
             // Merchant exists, return its ID
             existingMerchant[Merchants.id].value
         } else {
+            // Parse location from name to extract country and city
+            val parsedLocation = LocationParsingService.parseLocation(name)
+
             // Attempt automatic categorization
             val autoCategoryId = MerchantCategorizationService.autoCategorize(
                 merchantName = name,
-                location = normalizedLocation,
+                countryCode = parsedLocation.countryCode,
+                city = parsedLocation.city,
                 mccCode = mccCode
             )
 
             val needsCategorization = autoCategoryId == null
 
-            // Parse location to extract country and city
-            val parsedLocation = LocationParsingService.parseLocation(normalizedLocation)
-
             // Merchant doesn't exist, create new one
             val merchantId = Merchants.insert {
                 it[Merchants.name] = name
-                it[Merchants.location] = normalizedLocation
                 it[Merchants.mccCode] = mccCode
                 it[Merchants.categoryId] = autoCategoryId
                 it[Merchants.needsCategorization] = needsCategorization
@@ -77,9 +74,9 @@ object MerchantRepository {
             } get Merchants.id
 
             if (autoCategoryId != null) {
-                logger.info("Created new merchant: '$name' (location: $normalizedLocation, mcc: $mccCode) - auto-categorized")
+                logger.info("Created new merchant: '$name' (mcc: $mccCode) - auto-categorized")
             } else {
-                logger.info("Created new merchant: '$name' (location: $normalizedLocation, mcc: $mccCode) - needs manual categorization")
+                logger.info("Created new merchant: '$name' (mcc: $mccCode) - needs manual categorization")
             }
 
             merchantId.value
@@ -98,7 +95,6 @@ object MerchantRepository {
                 MerchantData(
                     id = row[Merchants.id].value,
                     name = row[Merchants.name],
-                    location = row[Merchants.location],
                     mccCode = row[Merchants.mccCode],
                     categoryId = row[Merchants.categoryId]?.value,
                     needsCategorization = row[Merchants.needsCategorization],
@@ -120,7 +116,6 @@ object MerchantRepository {
                 MerchantData(
                     id = row[Merchants.id].value,
                     name = row[Merchants.name],
-                    location = row[Merchants.location],
                     mccCode = row[Merchants.mccCode],
                     categoryId = row[Merchants.categoryId]?.value,
                     needsCategorization = row[Merchants.needsCategorization],
@@ -175,7 +170,8 @@ object MerchantRepository {
         for (merchant in merchantsToProcess) {
             val categoryId = MerchantCategorizationService.autoCategorize(
                 merchantName = merchant.name,
-                location = merchant.location,
+                countryCode = merchant.countryCode,
+                city = merchant.city,
                 mccCode = merchant.mccCode
             )
 
