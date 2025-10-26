@@ -407,6 +407,7 @@ object ForteBankStatementParser {
                     var bestLocationMatch: String = lastWord
                     var bestLocationWordCount = 1
                     var previousCityWordCount = 0
+                    var foundCity = false
 
                     // Try adding 1, 2, 3 words before the country code as city name
                     for (cityWords in 1..minOf(3, words.size - 1)) {
@@ -414,6 +415,7 @@ object ForteBankStatementParser {
                         val parsed = services.LocationParsingService.parseLocation(potentialLocation)
 
                         if (parsed.countryCode != null && parsed.city != null) {
+                            foundCity = true
                             val currentCityWordCount = parsed.city.split(" ").size
 
                             // Only accept this if the city grew (means we're adding to a multi-word city)
@@ -426,10 +428,12 @@ object ForteBankStatementParser {
                                 // City didn't grow - we're adding merchant words
                                 break
                             }
-                        } else {
-                            // This combination doesn't parse correctly
+                        } else if (foundCity) {
+                            // We found a city before but this longer combination doesn't work
+                            // Stop trying longer combinations
                             break
                         }
+                        // else: No city found yet, continue trying longer combinations
                     }
 
                     merchantLocation = bestLocationMatch

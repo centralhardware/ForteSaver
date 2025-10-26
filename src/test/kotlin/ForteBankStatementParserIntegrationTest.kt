@@ -268,12 +268,108 @@ class ForteBankStatementParserIntegrationTest {
     fun `test parse STRETTO CAFFE SARAJEVO BA`() {
         val details = "STRETTO CAFFE SARAJEVO BA"
         val result = ForteBankStatementParser.parseDetails(details)
-        
+
         assertEquals("STRETTO CAFFE", result.merchantName)
         assertEquals("SARAJEVO BA", result.merchantLocation)
-        
+
         val location = LocationParsingService.parseLocation(result.merchantLocation)
         assertEquals("BA", location.countryCode)
         assertEquals("SARAJEVO", location.city)
+    }
+
+    // NEW TESTS FROM USER - Real problematic transactions
+    @Test
+    fun `test parse 103 COFFEE CHOW KIT KUALA LUMPUR MY`() {
+        val details = "103 COFFEE CHOW KIT KUALA LUMPUR MY"
+        val result = ForteBankStatementParser.parseDetails(details)
+
+        println("Input: $details")
+        println("Merchant: ${result.merchantName}")
+        println("Location: ${result.merchantLocation}")
+
+        val location = LocationParsingService.parseLocation(result.merchantLocation)
+        println("Country: ${location.countryCode}")
+        println("City: ${location.city}")
+
+        // Should extract Kuala Lumpur properly
+        assertNotNull(location.countryCode, "Country code should be extracted")
+        assertEquals("MY", location.countryCode)
+    }
+
+    @Test
+    fun `test parse MPOS ROOTSPLANT DA NANG VN`() {
+        val details = "MPOS ROOTSPLANT DA NANG VN"
+        val result = ForteBankStatementParser.parseDetails(details)
+
+        val location = LocationParsingService.parseLocation(result.merchantLocation)
+        assertNotNull(location.countryCode)
+        assertEquals("VN", location.countryCode)
+    }
+
+    @Test
+    fun `test parse Grab HA NOI VN`() {
+        val details = "Grab* A 7C953M6WWIW4 HA NOI VN"
+        val result = ForteBankStatementParser.parseDetails(details)
+
+        val location = LocationParsingService.parseLocation(result.merchantLocation)
+        assertNotNull(location.countryCode)
+        assertEquals("VN", location.countryCode)
+    }
+
+    @Test
+    fun `test all real transactions from user`() {
+        val transactions = listOf(
+            "AIRBNB * HM3NPQSXXA 415 800 5959 LU",
+            "103 COFFEE CHOW KIT KUALA LUMPUR MY",
+            "SEMANGAT KAMPUNG SDN. BH KAMPUNG BARU MY",
+            "HOMETOWN HAINAN COFFEE Q KUALA LUMPUR MY",
+            "MPOS ROOTSPLANT DA NANG VN",
+            "6/6 DANANG VN",
+            "Grab* A 7C953M6WWIW4 HA NOI VN",
+            "PT FINNET INDONESIA Jakarta ID",
+            "SINGAPOREAI 618246001892 SINGAPORE ID",
+            "WWW.GRAB.COM BANGKOK TH",
+            "LONGRAO DIMSUM BANGKOK TH",
+            "TESLA VOZILO 3 VUKA KARADZI ME",
+            "WWW.GLOVOAPP.COM PODGORICA ME",
+            "KNJIZARA DELTA PODGORICA ME",
+            "MAMICKA PODGORICA ME",
+            "LCAE27 CULTO CAFE ABU DHABI AE",
+            "LP INTERCAFFE DOO A3 SURCIN RS",
+            "213 MAXI 178 BEOGRAD RS",
+            "DATA STATUS AKADEMIJA Savski venac RS",
+            "COFFEE CAKE PODGORICA ME",
+            "OOO Samarkand Touristic SAMARKAND UZ"
+        )
+
+        val failures = mutableListOf<String>()
+        var successCount = 0
+
+        println("\n=== TESTING ${transactions.size} REAL TRANSACTIONS ===")
+
+        transactions.forEachIndexed { index, transaction ->
+            val result = ForteBankStatementParser.parseDetails(transaction)
+            val location = LocationParsingService.parseLocation(result.merchantLocation)
+
+            val status = if (location.countryCode != null) {
+                successCount++
+                "✅"
+            } else {
+                failures.add("$transaction -> merchant=${result.merchantName}, location=${result.merchantLocation}")
+                "❌"
+            }
+
+            println("${index + 1}. $status \"$transaction\"")
+            println("   Merchant: ${result.merchantName ?: "(none)"}")
+            println("   Location: ${result.merchantLocation ?: "(none)"}")
+            println("   Country:  ${location.countryCode ?: "(none)"}")
+            println("   City:     ${location.city ?: "(none)"}")
+        }
+
+        println("\n=== SUMMARY ===")
+        println("Success: $successCount / ${transactions.size}")
+        println("Failures: ${failures.size} / ${transactions.size}\n")
+
+        assertEquals(0, failures.size, "Expected all transactions to extract location, but ${failures.size} failed")
     }
 }
