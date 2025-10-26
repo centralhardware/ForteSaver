@@ -411,9 +411,16 @@ object ForteBankStatementParser {
             // 3. Current line starts with short fragment (1-4 letters) followed by non-letter
             val currStartsWithShortFragment = Regex("^([A-Za-z]{1,4})([^A-Za-z].*|$)").find(currLine) != null
 
+            // 4. Current line starts with uppercase and looks like a new phrase (multiple words)
+            // Example: "Abu Dhabi Bank" is clearly a new phrase, not continuation of "First"
+            val currLooksLikeNewPhrase = currLine.firstOrNull()?.isUpperCase() == true &&
+                                         currLine.contains(" ") &&
+                                         !currStartsWithShortFragment
+
             val isWordContinuation = (prevEndsWithShortFragment || currStartsWithLowercase || currStartsWithShortFragment) &&
                                      prevLine.lastOrNull()?.isLetter() == true &&
-                                     currLine.firstOrNull()?.isLetter() == true
+                                     currLine.firstOrNull()?.isLetter() == true &&
+                                     !currLooksLikeNewPhrase
 
             if (isWordContinuation) {
                 // This looks like word continuation - join without space
