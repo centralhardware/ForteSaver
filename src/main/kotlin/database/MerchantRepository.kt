@@ -5,6 +5,7 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.slf4j.LoggerFactory
+import services.MerchantCategorizationService
 import java.time.LocalDateTime
 
 data class MerchantData(
@@ -21,7 +22,7 @@ object MerchantRepository {
 
     /**
      * Find or create a merchant based on name and location.
-     * If merchant doesn't exist, creates it with needs_categorization=true and null category.
+     * If merchant doesn't exist, creates it and attempts automatic categorization.
      * Returns the merchant ID.
      */
     suspend fun findOrCreateMerchant(
@@ -47,18 +48,31 @@ object MerchantRepository {
             // Merchant exists, return its ID
             existingMerchant[Merchants.id].value
         } else {
+            // Attempt automatic categorization
+            val autoCategoryId = MerchantCategorizationService.autoCategorize(
+                merchantName = name,
+                location = normalizedLocation,
+                mccCode = mccCode
+            )
+
+            val needsCategorization = autoCategoryId == null
+
             // Merchant doesn't exist, create new one
             val merchantId = Merchants.insert {
                 it[Merchants.name] = name
                 it[Merchants.location] = normalizedLocation
                 it[Merchants.mccCode] = mccCode
-                it[Merchants.categoryId] = null  // No category assigned yet
-                it[Merchants.needsCategorization] = true  // Needs manual categorization
+                it[Merchants.categoryId] = autoCategoryId
+                it[Merchants.needsCategorization] = needsCategorization
                 it[Merchants.createdAt] = LocalDateTime.now()
                 it[Merchants.updatedAt] = LocalDateTime.now()
             } get Merchants.id
 
-            logger.info("Created new merchant: '$name' (location: $normalizedLocation, mcc: $mccCode) - needs categorization")
+            if (autoCategoryId != null) {
+                logger.info("Created new merchant: '$name' (location: $normalizedLocation, mcc: $mccCode) - auto-categorized")
+            } else {
+                logger.info("Created new merchant: '$name' (location: $normalizedLocation, mcc: $mccCode) - needs manual categorization")
+            }
 
             merchantId.value
         }
@@ -136,5 +150,32 @@ object MerchantRepository {
             .map { row ->
                 row[Categories.id].value to row[Categories.name]
             }
+    }
+
+    /**
+     * Attempt to automatically categorize all merchants that need categorization.
+     * Returns the number of merchants successfully categorized.
+     */
+    suspend fun autoCategorizeExistingMerchants(): Int {
+        val merchantsToProcess = getMerchantsNeedingCategorization()
+        var categorizedCount = 0
+
+        for (merchant in merchantsToProcess) {
+            val categoryId = MerchantCategorizationService.autoCategorize(
+                merchantName = merchant.name,
+                location = merchant.location,
+                mccCode = merchant.mccCode
+            )
+
+            if (categoryId != null) {
+                val success = updateMerchantCategory(merchant.id, categoryId)
+                if (success) {
+                    categorizedCount++
+                }
+            }
+        }
+
+        logger.info("Auto-categorized $categorizedCount out of ${merchantsToProcess.size} merchants")
+        return categorizedCount
     }
 }

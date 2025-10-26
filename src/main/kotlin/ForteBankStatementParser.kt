@@ -263,6 +263,8 @@ object ForteBankStatementParser {
 
                 val (merchantName, merchantLocation, mccCode, bankName, paymentMethod) = parseDetails(merchantDetails)
 
+                logger.debug("Parsed merchant details from '$merchantDetails': name='$merchantName', location='$merchantLocation'")
+
                 transactions.add(
                     Transaction(
                         date = date,

@@ -1,3 +1,4 @@
+import commands.registerAutoCategorizeMerchantsCommand
 import commands.registerParseStatementCommand
 import commands.registerStartCommand
 import database.DatabaseManager
@@ -27,12 +28,14 @@ suspend fun main() {
         // Set bot commands
         setMyCommands(
             BotCommand("start", "Start the bot"),
-            BotCommand("help", "Show help message")
+            BotCommand("help", "Show help message"),
+            BotCommand("autocategorize", "Auto-categorize merchants")
         )
 
         // Register command handlers
         registerStartCommand()
         registerParseStatementCommand()
+        registerAutoCategorizeMerchantsCommand()
 
         logger.info("All handlers registered")
     }.second.join()
