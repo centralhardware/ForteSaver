@@ -15,7 +15,7 @@ object ForteBankStatementParser {
 
     fun parse(pdfFile: File): BankStatement {
         val document: PDDocument = Loader.loadPDF(pdfFile)
-        val stripper = PDFTextStripper()
+        val stripper = SmartPDFTextStripper()
         val text = stripper.getText(document)
         document.close()
 
@@ -26,7 +26,7 @@ object ForteBankStatementParser {
 
     fun parse(pdfBytes: ByteArray): BankStatement {
         val document: PDDocument = Loader.loadPDF(pdfBytes)
-        val stripper = PDFTextStripper()
+        val stripper = SmartPDFTextStripper()
         val text = stripper.getText(document)
         document.close()
 
