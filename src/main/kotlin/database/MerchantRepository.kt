@@ -5,6 +5,7 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.slf4j.LoggerFactory
+import services.LocationParsingService
 import services.MerchantCategorizationService
 import java.time.LocalDateTime
 
@@ -14,7 +15,9 @@ data class MerchantData(
     val location: String?,
     val mccCode: String?,
     val categoryId: Int?,
-    val needsCategorization: Boolean
+    val needsCategorization: Boolean,
+    val countryCode: String?,
+    val city: String?
 )
 
 object MerchantRepository {
@@ -57,6 +60,9 @@ object MerchantRepository {
 
             val needsCategorization = autoCategoryId == null
 
+            // Parse location to extract country and city
+            val parsedLocation = LocationParsingService.parseLocation(normalizedLocation)
+
             // Merchant doesn't exist, create new one
             val merchantId = Merchants.insert {
                 it[Merchants.name] = name
@@ -64,6 +70,8 @@ object MerchantRepository {
                 it[Merchants.mccCode] = mccCode
                 it[Merchants.categoryId] = autoCategoryId
                 it[Merchants.needsCategorization] = needsCategorization
+                it[Merchants.countryCode] = parsedLocation.countryCode
+                it[Merchants.city] = parsedLocation.city
                 it[Merchants.createdAt] = LocalDateTime.now()
                 it[Merchants.updatedAt] = LocalDateTime.now()
             } get Merchants.id
@@ -93,7 +101,9 @@ object MerchantRepository {
                     location = row[Merchants.location],
                     mccCode = row[Merchants.mccCode],
                     categoryId = row[Merchants.categoryId]?.value,
-                    needsCategorization = row[Merchants.needsCategorization]
+                    needsCategorization = row[Merchants.needsCategorization],
+                    countryCode = row[Merchants.countryCode],
+                    city = row[Merchants.city]
                 )
             }
     }
@@ -113,7 +123,9 @@ object MerchantRepository {
                     location = row[Merchants.location],
                     mccCode = row[Merchants.mccCode],
                     categoryId = row[Merchants.categoryId]?.value,
-                    needsCategorization = row[Merchants.needsCategorization]
+                    needsCategorization = row[Merchants.needsCategorization],
+                    countryCode = row[Merchants.countryCode],
+                    city = row[Merchants.city]
                 )
             }
     }

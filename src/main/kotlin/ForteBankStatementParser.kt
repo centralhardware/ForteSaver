@@ -377,52 +377,44 @@ object ForteBankStatementParser {
                 }
             }
         } else {
-            // Format 2: Space-separated, likely "MERCHANT NAME PARTS CITY COUNTRY_CODE"
+            // Format 2: Space-separated, likely "MERCHANT NAME PARTS CITY PARTS COUNTRY_CODE"
+            // Strategy: Last word = country code (2 letters), everything else goes to location
+            // Let LocationParsingService handle city extraction later
+            //
             // Examples:
-            // - "CAFFE BAR CASPER BUDVA ME"
-            // - "KASA 6 PODGORICA ME"
-            // - "WWW.BUSTICKET4.ME PODGORICA ME"
-            val words = details.split("\\s+".toRegex()).filter { it.isNotBlank() }
+            // - "CAFFE BAR CASPER BUDVA ME" -> merchant="CAFFE BAR CASPER", location="BUDVA ME"
+            // - "CIRCLE K HO CHI MINH VN" -> merchant="CIRCLE K", location="HO CHI MINH VN"
+            // - "7-ELEVEN KUALA LUMPUR MY" -> merchant="7-ELEVEN", location="KUALA LUMPUR MY"
 
-            if (words.size >= 3) {
-                // Last word is often 2-letter country code
+            // Remove known suffixes (MCC, bank, payment method) first
+            var cleanDetails = details
+            cleanDetails = cleanDetails.replaceFirst(Regex("\\s*MCC:.*$"), "")
+            cleanDetails = cleanDetails.replaceFirst(Regex("\\s*APPLE PAY.*$"), "")
+            cleanDetails = cleanDetails.replaceFirst(Regex("\\s*GOOGLE PAY.*$"), "")
+
+            val words = cleanDetails.split("\\s+".toRegex()).filter { it.isNotBlank() }
+
+            if (words.size >= 2) {
+                // Check if last word is 2-letter country code
                 val lastWord = words.last()
                 val isCountryCode = lastWord.length == 2 && lastWord.all { it.isLetter() }
 
-                if (isCountryCode && words.size >= 3) {
-                    // Format: "MERCHANT PARTS... CITY CC"
-                    // Try to identify city name (word before country code)
-                    // City is typically capitalized and not a number
-                    val secondLastWord = words[words.size - 2]
+                if (isCountryCode) {
+                    // Simple strategy: first word = merchant, rest = location (city + country)
+                    // This handles both single and multi-word cities automatically
+                    // LocationParsingService will extract city from this later
 
-                    // Check if second-last word looks like a city name
-                    // (starts with capital, not a number, not "KASA")
-                    val looksLikeCity = secondLastWord.firstOrNull()?.isUpperCase() == true &&
-                                       !secondLastWord.all { it.isDigit() } &&
-                                       !secondLastWord.matches(Regex("KASA|\\d+"))
-
-                    if (looksLikeCity) {
-                        // "CAFFE BAR CASPER BUDVA ME" -> merchant="CAFFE BAR CASPER", location="BUDVA ME"
-                        // "KASA 6 PODGORICA ME" -> merchant="KASA 6", location="PODGORICA ME"
-                        merchantName = words.dropLast(2).joinToString(" ")
-                        merchantLocation = words.takeLast(2).joinToString(" ")
-                    } else {
-                        // Fallback: first word is merchant
-                        merchantName = words[0]
-                        merchantLocation = words.drop(1).joinToString(" ")
-                    }
-                } else if (words.size >= 2) {
-                    // Fallback: last word is location
-                    merchantName = words.dropLast(1).joinToString(" ")
-                    merchantLocation = words.last()
+                    merchantName = words.first()
+                    merchantLocation = words.drop(1).joinToString(" ")
+                } else {
+                    // No country code - treat first word as merchant, rest as location
+                    merchantName = words.firstOrNull()
+                    merchantLocation = words.drop(1).joinToString(" ").ifBlank { null }
                 }
-            } else if (words.size == 2) {
-                // Only 2 words: "MERCHANT LOCATION"
-                merchantName = words[0]
-                merchantLocation = words[1]
             } else if (words.size == 1) {
-                // Only merchant name
+                // Only one word - could be merchant or country
                 merchantName = words[0]
+                merchantLocation = null
             }
         }
 

@@ -1,6 +1,4 @@
-import commands.registerAutoCategorizeMerchantsCommand
-import commands.registerParseStatementCommand
-import commands.registerStartCommand
+import commands.*
 import database.DatabaseManager
 import dev.inmo.micro_utils.common.Warning
 import dev.inmo.tgbotapi.AppConfig
@@ -29,13 +27,15 @@ suspend fun main() {
         setMyCommands(
             BotCommand("start", "Start the bot"),
             BotCommand("help", "Show help message"),
-            BotCommand("autocategorize", "Auto-categorize merchants")
+            BotCommand("autocategorize", "Auto-categorize merchants"),
+            BotCommand("detecttrips", "Detect trips from transactions")
         )
 
         // Register command handlers
         registerStartCommand()
         registerParseStatementCommand()
         registerAutoCategorizeMerchantsCommand()
+        registerDetectTripsCommand()
 
         logger.info("All handlers registered")
     }.second.join()
