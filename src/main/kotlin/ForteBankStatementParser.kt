@@ -382,6 +382,8 @@ object ForteBankStatementParser {
      * Examples:
      * - ["SUPER TURTLE PUBLIC LIMI", "TED BANGKOK"] -> "SUPER TURTLE PUBLIC LIMITED BANGKOK"
      * - ["Bank not specifie", "d, MCC: 5399"] -> "Bank not specified, MCC: 5399"
+     * - ["Freedom Bank Ka", "zakhstan JSC"] -> "Freedom Bank Kazakhstan JSC"
+     * - ["Thai Smart Card C", "ompany Limited"] -> "Thai Smart Card Company Limited"
      */
     private fun smartJoinLines(lines: List<String>): String {
         if (lines.isEmpty()) return ""
@@ -398,11 +400,22 @@ object ForteBankStatementParser {
             val prevLine = lines[i - 1]
             val currLine = lines[i]
 
-            // Check if current line starts with short fragment (1-4 letters) followed by non-letter or end
-            // This indicates a word continuation from previous line
-            val fragmentMatch = Regex("^([A-Za-z]{1,4})([^A-Za-z].*|$)").find(currLine)
+            // Detect word continuation in several ways:
 
-            if (fragmentMatch != null && prevLine.lastOrNull()?.isLetter() == true) {
+            // 1. Previous line ends with short fragment (1-3 letters at the end of last word)
+            val prevEndsWithShortFragment = Regex("\\b([A-Za-z]{1,3})$").find(prevLine) != null
+
+            // 2. Current line starts with lowercase letter (clear continuation)
+            val currStartsWithLowercase = currLine.firstOrNull()?.isLowerCase() == true
+
+            // 3. Current line starts with short fragment (1-4 letters) followed by non-letter
+            val currStartsWithShortFragment = Regex("^([A-Za-z]{1,4})([^A-Za-z].*|$)").find(currLine) != null
+
+            val isWordContinuation = (prevEndsWithShortFragment || currStartsWithLowercase || currStartsWithShortFragment) &&
+                                     prevLine.lastOrNull()?.isLetter() == true &&
+                                     currLine.firstOrNull()?.isLetter() == true
+
+            if (isWordContinuation) {
                 // This looks like word continuation - join without space
                 result.append(currLine)
             } else {
