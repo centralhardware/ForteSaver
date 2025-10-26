@@ -319,6 +319,17 @@ class ForteBankStatementParserIntegrationTest {
     @Test
     fun `test all real transactions from user`() {
         val transactions = listOf(
+            "KOKOS SDN BHD-QCM KUALA LUMPUR MY",
+            "GRAB RIDES-EC PETALING JAY MY",
+            "MUJI-TRX KUALA LUMPUR MY",
+            "GOOGLE *YouTubePremium g.co/helppay GB",
+            "APPLE.COM BANGKOK TH",
+            "Grab* A 7JN7P8AWWFCI8W South Jakart ID",
+            "STARBUCKS DEWATA BALI BADUNG ID",
+            "MM SR11 Badung (Kab) ID",
+            "NHA HANG VAN MAY Q NGU HANH S VN",
+            "VNPAY*SUNMART Q SON TRA VN",
+            "SINGAPOREAI 618246001892 SINGAPORE ID",
             "AIRBNB * HM3NPQSXXA 415 800 5959 LU",
             "103 COFFEE CHOW KIT KUALA LUMPUR MY",
             "SEMANGAT KAMPUNG SDN. BH KAMPUNG BARU MY",
@@ -327,7 +338,6 @@ class ForteBankStatementParserIntegrationTest {
             "6/6 DANANG VN",
             "Grab* A 7C953M6WWIW4 HA NOI VN",
             "PT FINNET INDONESIA Jakarta ID",
-            "SINGAPOREAI 618246001892 SINGAPORE ID",
             "WWW.GRAB.COM BANGKOK TH",
             "LONGRAO DIMSUM BANGKOK TH",
             "TESLA VOZILO 3 VUKA KARADZI ME",

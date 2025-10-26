@@ -125,13 +125,20 @@ object LocationParsingService {
         val cityWordCount = determineCityWordCount(wordsBeforeCountry, countryCode)
 
         // Extract city (take last N words before country code)
-        val city = wordsBeforeCountry
+        val cityInput = wordsBeforeCountry
             .takeLast(cityWordCount)
             .joinToString(" ")
 
+        // Get canonical city name from database (handles fuzzy matching)
+        val city = if (cityInput.isNotBlank()) {
+            GeoNamesCityDatabase.findCityMatch(cityInput, countryCode) ?: cityInput
+        } else {
+            null
+        }
+
         return ParsedLocation(
             countryCode,
-            if (city.isNotBlank()) city else null
+            city
         )
     }
 

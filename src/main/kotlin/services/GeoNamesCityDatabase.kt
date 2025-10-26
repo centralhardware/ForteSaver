@@ -112,8 +112,20 @@ object GeoNamesCityDatabase {
      * @return true if the city is in our database, false otherwise
      */
     fun isCityInCountry(cityName: String, countryCode: String): Boolean {
+        return findCityMatch(cityName, countryCode) != null
+    }
+
+    /**
+     * Find the canonical city name in the database, or null if not found.
+     * Handles fuzzy matching for common issues.
+     *
+     * @param cityName City name to search for
+     * @param countryCode ISO 3166-1 alpha-2 country code
+     * @return Canonical city name from database, or null if not found
+     */
+    fun findCityMatch(cityName: String, countryCode: String): String? {
         if (cityName.isBlank() || countryCode.isBlank()) {
-            return false
+            return null
         }
 
         val normalizedCity = cityName.trim().uppercase()
@@ -122,14 +134,63 @@ object GeoNamesCityDatabase {
         val countryCities = citiesByCountry[normalizedCountry]
         if (countryCities == null) {
             logger.debug("Country $normalizedCountry not in database")
-            // Unknown country - assume city exists (fail open)
-            return true
+            // Unknown country - return input as-is (fail open)
+            return normalizedCity
         }
 
-        val exists = countryCities.contains(normalizedCity)
-        logger.debug("City check: $normalizedCity in $normalizedCountry = $exists")
+        // Direct match
+        if (countryCities.contains(normalizedCity)) {
+            logger.debug("City check: $normalizedCity in $normalizedCountry = true (exact match)")
+            return normalizedCity
+        }
 
-        return exists
+        // Try fuzzy matching for common issues
+        val fuzzyMatch = findFuzzyMatchCanonical(normalizedCity, countryCities)
+        logger.debug("City check: $normalizedCity in $normalizedCountry = ${fuzzyMatch != null} (fuzzy match: $fuzzyMatch)")
+
+        return fuzzyMatch
+    }
+
+    /**
+     * Try to find a fuzzy match for city name and return the canonical name.
+     * Handles:
+     * - Truncated names (e.g., "Jakart" -> "Jakarta")
+     * - Typos (e.g., "Petaling Jay" -> "Petaling Jaya")
+     * - Direction prefixes (e.g., "South Jakarta" -> "Jakarta")
+     */
+    private fun findFuzzyMatchCanonical(cityName: String, citiesInCountry: Set<String>): String? {
+        // Strategy 1: Remove direction prefixes (North, South, East, West)
+        val directionPrefixes = setOf("NORTH", "SOUTH", "EAST", "WEST", "CENTRAL")
+        val words = cityName.split(" ")
+        if (words.size >= 2 && words[0] in directionPrefixes) {
+            val withoutDirection = words.drop(1).joinToString(" ")
+            if (citiesInCountry.contains(withoutDirection)) {
+                return withoutDirection
+            }
+        }
+
+        // Strategy 2: Check if any city in the database starts with this (truncated names)
+        // Only if the input is reasonably long (>= 5 chars) to avoid false positives
+        if (cityName.length >= 5) {
+            val match = citiesInCountry.find { it.startsWith(cityName) }
+            if (match != null) {
+                return match
+            }
+        }
+
+        // Strategy 3: Check if this starts with any city in database (typos at end)
+        // Example: "PETALING JAY" -> find "PETALING JAYA"
+        if (cityName.length >= 5) {
+            val match = citiesInCountry.find { dbCity ->
+                // Allow up to 2 character difference at the end
+                dbCity.startsWith(cityName.dropLast(1)) || dbCity.startsWith(cityName.dropLast(2))
+            }
+            if (match != null) {
+                return match
+            }
+        }
+
+        return null
     }
 
     /**
