@@ -341,8 +341,9 @@ object ForteBankStatementParser {
             bankName = bankMatch.groupValues[1].trim()
             // Normalize whitespace and check if it's "Bank not specified"
             // PDF extraction sometimes adds extra spaces: "Bank not specifi ed", "Bank not spec ified", etc.
-            val normalizedBankName = bankName.replace(Regex("\\s+"), " ").lowercase()
-            if (normalizedBankName == "bank not specified") {
+            // Remove ALL spaces (including within words) before comparing
+            val normalizedBankName = bankName.replace(Regex("\\s+"), "").lowercase()
+            if (normalizedBankName == "banknotspecified") {
                 bankName = null
             }
         }
