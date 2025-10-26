@@ -248,14 +248,14 @@ object ForteBankStatementParser {
                 // Remove date, amounts, and type prefix to get clean merchant details
                 var merchantDetails = fullText
 
-                // Remove date prefix: "16.10.2025 "
-                merchantDetails = merchantDetails.replaceFirst(Regex("^\\d{2}\\.\\d{2}\\.\\d{4}\\s+"), "")
+                // Remove date prefix: "16.10.2025 " or "07.06.2025-" (minus can stick to date)
+                merchantDetails = merchantDetails.replaceFirst(Regex("^\\d{2}\\.\\d{2}\\.\\d{4}[-\\s]+"), "")
 
-                // Remove account amount: "-1.89 USD " or "1.89 USD "
-                merchantDetails = merchantDetails.replaceFirst(Regex("^[-]?\\d+\\.\\d{2}\\s+[A-Z]{3}\\s+"), "")
+                // Remove account amount: "-70.80 USD " or "1.89 USD " or "70.80 USD"
+                merchantDetails = merchantDetails.replaceFirst(Regex("^[-]?\\d+\\.\\d{2}\\s+[A-Z]{3}\\s*"), "")
 
-                // Remove transaction amount if present: "(7.80 MYR) "
-                merchantDetails = merchantDetails.replaceFirst(Regex("^\\([\\d.]+\\s+[A-Z]{3}\\)\\s+"), "")
+                // Remove transaction amount if present: "(299.00 MYR) " or "(7.80 MYR)"
+                merchantDetails = merchantDetails.replaceFirst(Regex("^\\([\\d.]+\\s+[A-Z]{3}\\)\\s*"), "")
 
                 // Remove transaction type prefix
                 val typePattern = "(Purchase with bonuses|Purchase|Transfer|Refund|Account replenishment|Cash withdrawal|Fee)\\s+"
