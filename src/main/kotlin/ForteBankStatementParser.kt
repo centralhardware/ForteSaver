@@ -213,8 +213,8 @@ object ForteBankStatementParser {
                     j++
                 }
 
-                // Join all lines for parsing
-                val fullText = txLines.joinToString(" ")
+                // Join all lines for parsing with smart word-break handling
+                val fullText = smartJoinLines(txLines)
 
                 // Extract amount in account currency: "-3.26 USD"
                 val accountAmountMatch = Regex("([-]?\\d+\\.\\d{2})\\s+([A-Z]{3})").find(fullText)
@@ -374,5 +374,46 @@ object ForteBankStatementParser {
         }
 
         return TransactionDetails(merchantName, merchantLocation, mccCode, bankName, paymentMethod)
+    }
+
+    /**
+     * Intelligently joins multiple lines, handling word breaks that occur without hyphens.
+     *
+     * Examples:
+     * - ["SUPER TURTLE PUBLIC LIMI", "TED BANGKOK"] -> "SUPER TURTLE PUBLIC LIMITED BANGKOK"
+     * - ["Bank not specifie", "d, MCC: 5399"] -> "Bank not specified, MCC: 5399"
+     */
+    private fun smartJoinLines(lines: List<String>): String {
+        if (lines.isEmpty()) return ""
+        if (lines.size == 1) return lines[0]
+
+        val result = StringBuilder()
+
+        for (i in lines.indices) {
+            if (i == 0) {
+                result.append(lines[i])
+                continue
+            }
+
+            val prevLine = lines[i - 1]
+            val currLine = lines[i]
+
+            // Check if current line starts with short fragment (1-4 letters) followed by non-letter or end
+            // This indicates a word continuation from previous line
+            val fragmentMatch = Regex("^([A-Za-z]{1,4})([^A-Za-z].*|$)").find(currLine)
+
+            if (fragmentMatch != null && prevLine.lastOrNull()?.isLetter() == true) {
+                // This looks like word continuation - join without space
+                result.append(currLine)
+            } else {
+                // Regular word - join with space
+                result.append(" ").append(currLine)
+            }
+        }
+
+        return result.toString()
+            .replace(Regex("-\\s+"), "-")  // Handle hyphenated breaks: "SUPER- MARKET" -> "SUPER-MARKET"
+            .replace(Regex("\\s+"), " ")    // Normalize multiple spaces to single space
+            .trim()
     }
 }
