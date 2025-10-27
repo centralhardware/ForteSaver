@@ -42,7 +42,7 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql:11.15.0")
 
     // Logging
-    implementation("ch.qos.logback:logback-classic:1.5.15")
+    implementation("ch.qos.logback:logback-classic:1.5.20")
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter-api:6.0.0")
